@@ -1,13 +1,13 @@
 {
-  "style": "Miga Town 2D Vector Cartoon (Miga Room Scale on 960x540, #FFFFFF bg, #2b1810 outline)",
+  "style": "Japanese Cozy Stationery 2D Vector Cartoon (Miga Room Scale on 960x540, #FFFFFF bg, #2b1810 outline)",
   "items": {
     "char_girl_basic": {
-      "w": 85,
-      "h": 160
+      "w": 87,
+      "h": 164
     },
     "char_boy_basic": {
-      "w": 83,
-      "h": 164
+      "w": 77,
+      "h": 166
     },
     "room_door": {
       "w": 174,
@@ -164,6 +164,190 @@
     "strawberry_cake": {
       "w": 65,
       "h": 74
+    },
+    "char_grandpa": {
+      "w": 86,
+      "h": 170
+    },
+    "char_chef_barista": {
+      "w": 82,
+      "h": 170
+    },
+    "char_toddler_kid": {
+      "w": 71,
+      "h": 126
+    },
+    "char_girl_sleep": {
+      "w": 89,
+      "h": 164
+    },
+    "char_girl_outfit_pajama": {
+      "w": 89,
+      "h": 164
+    },
+    "char_girl_outfit_summer": {
+      "w": 89,
+      "h": 170
+    },
+    "char_girl_outfit_coat": {
+      "w": 89,
+      "h": 164
+    },
+    "char_girl_walk_1": {
+      "w": 87,
+      "h": 164
+    },
+    "char_girl_walk_2": {
+      "w": 97,
+      "h": 164
+    },
+    "char_girl_sit": {
+      "w": 84,
+      "h": 152
+    },
+    "char_girl_happy_wave": {
+      "w": 94,
+      "h": 164
+    },
+    "char_boy_sleep": {
+      "w": 82,
+      "h": 166
+    },
+    "char_boy_outfit_pajama": {
+      "w": 81,
+      "h": 166
+    },
+    "char_boy_outfit_summer": {
+      "w": 79,
+      "h": 166
+    },
+    "char_boy_outfit_sport": {
+      "w": 80,
+      "h": 170
+    },
+    "char_boy_sit": {
+      "w": 74,
+      "h": 154
+    },
+    "char_boy_happy_wave": {
+      "w": 90,
+      "h": 166
+    },
+    "char_boy_walk_1": {
+      "w": 79,
+      "h": 166
+    },
+    "char_boy_walk_2": {
+      "w": 98,
+      "h": 166
+    },
+    "balcony_egg_chair": {
+      "w": 147,
+      "h": 224
+    },
+    "patio_lounge_chair": {
+      "w": 232,
+      "h": 130
+    },
+    "street_bench": {
+      "w": 210,
+      "h": 135
+    },
+    "street_lamp_post": {
+      "w": 93,
+      "h": 264
+    },
+    "street_bush_flowers": {
+      "w": 178,
+      "h": 124
+    },
+    "room_arch_divider": {
+      "w": 160,
+      "h": 338
+    },
+    "balcony_railing_lights": {
+      "w": 480,
+      "h": 130
+    },
+    "char_florist_girl": {
+      "w": 86,
+      "h": 168
+    },
+    "shiba_dog_pet": {
+      "w": 76,
+      "h": 98
+    }
+  },
+  "wallpapers": {
+    "wall_aqua_mosaic": {
+      "w": 120,
+      "h": 338
+    },
+    "wall_cozy_brick_cafe": {
+      "w": 120,
+      "h": 338
+    },
+    "wall_peach_blossom": {
+      "w": 120,
+      "h": 338
+    },
+    "wall_sage_mint": {
+      "w": 120,
+      "h": 338
+    },
+    "wall_warm_cream": {
+      "w": 120,
+      "h": 338
+    }
+  },
+  "floors": {
+    "floor_honey_oak": {
+      "w": 120,
+      "h": 202
+    },
+    "floor_light_birch": {
+      "w": 120,
+      "h": 202
+    },
+    "floor_patio_stone": {
+      "w": 120,
+      "h": 202
+    },
+    "floor_terrazzo_bath": {
+      "w": 120,
+      "h": 202
+    },
+    "floor_warm_walnut": {
+      "w": 120,
+      "h": 202
+    }
+  },
+  "backdrops": {
+    "backdrop_day_seaside_sky": {
+      "w": 960,
+      "h": 540
+    },
+    "backdrop_night_starry_town": {
+      "w": 960,
+      "h": 540
+    },
+    "backdrop_street_town_day": {
+      "w": 960,
+      "h": 540
+    },
+    "backdrop_sunset_balcony": {
+      "w": 960,
+      "h": 540
+    }
+  },
+  "dividers": {
+    "balcony_railing_lights": {
+      "w": 480,
+      "h": 130
+    },
+    "room_arch_divider": {
+      "w": 160,
+      "h": 338
     }
   }
 }

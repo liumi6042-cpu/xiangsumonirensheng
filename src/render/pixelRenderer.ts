@@ -306,10 +306,10 @@ export class PixelRenderer {
       }
     };
 
-    // Pass 1: Wall items (ceiling lamps, dividers & arches draw after windows for clean framing)
+    // Pass 1: Wall items (ceiling lamps and dividers draw after windows for clean framing)
     wallItems.sort((a, b) => {
       const rank = (id: string) =>
-        id === 'room_divider_pillar' || id === 'room_arch_divider'
+        id === 'room_divider_pillar'
           ? 2
           : id === 'pendant_ceiling_lamp'
             ? 1

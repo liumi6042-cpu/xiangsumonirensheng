@@ -130,7 +130,6 @@ export const CATALOG_ITEMS: FurnitureCatalogDef[] = [
   { id: 'floor_standing_lamp', name: '彩绘玻璃落地灯', category: '墙饰灯具', tier: 'T2', price: 165, comfort: 7, description: '放在沙发旁最有电影氛围，支持随时开关灯。' },
   { id: 'street_lamp_post', name: '铁艺暖光街灯', category: '墙饰灯具', tier: 'T2', price: 195, comfort: 7, description: '庭院与阳台夜景必备，夜晚自动融入暖光灯池，支持点击开关。' },
   { id: 'balcony_railing_lights', name: '星光串灯玻璃护栏', category: '墙饰灯具', tier: 'T2', price: 240, comfort: 8, description: '自带暖黄小灯串的玻璃阳台护栏，夜晚点亮超浪漫！' },
-  { id: 'room_arch_divider', name: '奶油串旗拱门隔断', category: '墙饰灯具', tier: 'T1', price: 140, comfort: 6, description: '超人气客厅/餐厅半开放拱门，顶部还挂着彩色三角旗！' },
   { id: 'room_door', name: '暖木玻璃木门', category: '墙饰灯具', tier: 'T1', price: 160, comfort: 4, description: '经典磨砂斜光玻璃室内门，适合分隔卧室与卫浴间。' },
   { id: 'room_divider_pillar', name: '顶天立地木隔断', category: '墙饰灯具', tier: 'T1', price: 90, comfort: 3, description: '用来划分厨房、卧室与浴室边界的实木结构柱。' },
   { id: 'stairwell_door_1f', name: '上下楼木楼梯门', category: '墙饰灯具', tier: 'T2', price: 320, comfort: 4, description: '连接 1F 与 2F 的温馨木楼梯，点击可快速切换楼层。' },

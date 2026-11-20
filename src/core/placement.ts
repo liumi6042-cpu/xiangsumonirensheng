@@ -183,10 +183,7 @@ export function evaluatePlacement(
   if (meta.anchor === 'ceiling') {
     y = CEILING_BOTTOM_Y;
   } else if (meta.anchor === 'floor') {
-    y =
-      itemId === 'room_divider_pillar' || itemId === 'room_arch_divider'
-        ? CEILING_BOTTOM_Y
-        : WALL_FLOOR_Y - meta.h;
+    y = itemId === 'room_divider_pillar' ? CEILING_BOTTOM_Y : WALL_FLOOR_Y - meta.h;
   } else {
     const rawY = snap(worldY - meta.h / 2, 10);
     y = clamp(rawY, CEILING_BOTTOM_Y + 12, WALL_FLOOR_Y - meta.h - 10);

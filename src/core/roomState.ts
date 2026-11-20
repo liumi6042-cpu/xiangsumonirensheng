@@ -137,21 +137,21 @@ export function createInitialSaveState(): GameSaveState {
   const omurice = makeItem('plate_omurice', 352, 368 + 28 - 34 + 4, { variant: 0, parentId: diningTable.uid });
   const cake = makeItem('strawberry_cake', 422, 368 + 28 - 61 + 4, { variant: 0, parentId: diningTable.uid });
 
-  // Living zone (cols 9..18, 540..1140) — hide wall transition seam cleanly inside arch & pillars!
-  const archDivider = makeItem('room_arch_divider', 524, CEILING_BOTTOM_Y, { variant: 0 });
-  const window1 = makeItem('sunset_window', 694, 72, { variant: 0, isActive: true });
-  const lamp1 = makeItem('pendant_ceiling_lamp', 848, CEILING_BOTTOM_Y, { variant: 0, isActive: true });
-  const shelf = makeItem('wall_shelf_wide', 892, 114, { variant: 0 });
-  const succ1 = makeItem('potted_succulent', 910, 114 + 11 - 49 + 4, { variant: 0, parentId: shelf.uid });
-  const fig1 = makeItem('chibi_figurine_trio', 964, 114 + 11 - 56 + 4, { variant: 0, parentId: shelf.uid });
+  // Living zone (cols 9..18, 540..1140) — crisp wood pillar hides dining/living wall seam cleanly
+  const divider0 = makeItem('room_divider_pillar', 526, CEILING_BOTTOM_Y, { variant: 0 });
+  const window1 = makeItem('sunset_window', 648, 72, { variant: 0, isActive: true });
+  const lamp1 = makeItem('pendant_ceiling_lamp', 806, CEILING_BOTTOM_Y, { variant: 0, isActive: true });
+  const shelf = makeItem('wall_shelf_wide', 874, 114, { variant: 0 });
+  const succ1 = makeItem('potted_succulent', 892, 114 + 11 - 49 + 4, { variant: 0, parentId: shelf.uid });
+  const fig1 = makeItem('chibi_figurine_trio', 946, 114 + 11 - 56 + 4, { variant: 0, parentId: shelf.uid });
 
-  const sofa = makeItem('plush_sofa', 686, 390 - 120, { variant: 0 });
-  const rug = makeItem('persian_cozy_rug', 670, 398, { variant: 0 });
-  const cat = makeItem('sleeping_ginger_cat_prop', 690, 398 + 62 - 53 + 4, { variant: 0, parentId: rug.uid });
-  const coffeeTable = makeItem('coffee_table', 762, 492 - 79, { variant: 0 });
-  const mug2 = makeItem('coffee_mug_steaming', 812, 413 + 20 - 44 + 4, { variant: 0, parentId: coffeeTable.uid });
-  const floorLamp = makeItem('floor_standing_lamp', 936, 394 - 184, { variant: 0, isActive: true });
-  const stairs = makeItem('stairwell_door_1f', 984, WALL_FLOOR_Y - 226, { variant: 0 });
+  const sofa = makeItem('plush_sofa', 628, 390 - 120, { variant: 0 });
+  const rug = makeItem('persian_cozy_rug', 612, 398, { variant: 0 });
+  const cat = makeItem('sleeping_ginger_cat_prop', 632, 398 + 62 - 53 + 4, { variant: 0, parentId: rug.uid });
+  const coffeeTable = makeItem('coffee_table', 706, 492 - 79, { variant: 0 });
+  const mug2 = makeItem('coffee_mug_steaming', 756, 413 + 20 - 44 + 4, { variant: 0, parentId: coffeeTable.uid });
+  const floorLamp = makeItem('floor_standing_lamp', 896, 394 - 184, { variant: 0, isActive: true });
+  const stairs = makeItem('stairwell_door_1f', 974, WALL_FLOOR_Y - 226, { variant: 0 });
 
   // Bedroom zone (cols 19..25, 1140..1560) — divider centered on x=1140 seam
   const divider1 = makeItem('room_divider_pillar', 1126, CEILING_BOTTOM_Y, { variant: 0 });
@@ -201,7 +201,7 @@ export function createInitialSaveState(): GameSaveState {
       chairR,
       omurice,
       cake,
-      archDivider,
+      divider0,
       window1,
       lamp1,
       shelf,

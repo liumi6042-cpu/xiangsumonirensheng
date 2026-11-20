@@ -237,10 +237,6 @@ def main() -> None:
     pillars = build_cartoon_divider_pillars()
     register_item("room_divider_pillar", {"layer": "wall", "anchor": "floor"}, pillars)
 
-    arch_raw = Image.open(SRC_TRANS / "room_arch_divider.png").convert("RGBA")
-    arch_im = arch_raw.resize((152, WALL_HEIGHT), Image.Resampling.LANCZOS)
-    register_item("room_arch_divider", {"layer": "wall", "anchor": "floor"}, [("奶油拱门串旗", arch_im)])
-
     stairs_1 = load_scaled("stairwell_door")
     stairs_2 = recolor_hsv_shift(stairs_1, hue_shift_deg=-10, sat_mult=0.9, val_mult=0.92, warm_wood_only=True)
     register_item(

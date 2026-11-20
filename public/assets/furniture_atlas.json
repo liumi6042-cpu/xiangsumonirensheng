@@ -1,0 +1,1114 @@
+{
+  "gridSize": 60,
+  "atlasWidth": 2012,
+  "atlasHeight": 483,
+  "items": {
+    "room_divider_pillar": {
+      "w": 22,
+      "h": 266,
+      "layer": "wall",
+      "anchor": "floor",
+      "variants": [
+        {
+          "index": 0,
+          "name": "暖橡木隔断",
+          "x": 2,
+          "y": 2,
+          "w": 22,
+          "h": 266
+        },
+        {
+          "index": 1,
+          "name": "深胡桃隔断",
+          "x": 26,
+          "y": 2,
+          "w": 22,
+          "h": 266
+        },
+        {
+          "index": 2,
+          "name": "奶油白木柱",
+          "x": 50,
+          "y": 2,
+          "w": 22,
+          "h": 266
+        }
+      ]
+    },
+    "stairwell_door_1f": {
+      "w": 97,
+      "h": 172,
+      "layer": "wall",
+      "anchor": "floor",
+      "isStairs": true,
+      "variants": [
+        {
+          "index": 0,
+          "name": "1F楼梯口",
+          "x": 74,
+          "y": 2,
+          "w": 97,
+          "h": 172
+        },
+        {
+          "index": 1,
+          "name": "2F楼梯口",
+          "x": 173,
+          "y": 2,
+          "w": 97,
+          "h": 172
+        }
+      ]
+    },
+    "tall_bookshelf": {
+      "w": 100,
+      "h": 152,
+      "layer": "floor",
+      "footDepth": 22,
+      "surfaces": [
+        {
+          "y": 9,
+          "x0": 8,
+          "x1": 92
+        }
+      ],
+      "variants": [
+        {
+          "index": 0,
+          "name": "暖橡木",
+          "x": 272,
+          "y": 2,
+          "w": 100,
+          "h": 152
+        },
+        {
+          "index": 1,
+          "name": "深胡桃",
+          "x": 374,
+          "y": 2,
+          "w": 100,
+          "h": 152
+        }
+      ]
+    },
+    "retro_fridge": {
+      "w": 91,
+      "h": 144,
+      "layer": "floor",
+      "footDepth": 26,
+      "surfaces": [
+        {
+          "y": 13,
+          "x0": 13,
+          "x1": 76
+        }
+      ],
+      "variants": [
+        {
+          "index": 0,
+          "name": "复古薄荷绿",
+          "x": 476,
+          "y": 2,
+          "w": 91,
+          "h": 144
+        },
+        {
+          "index": 1,
+          "name": "奶油香草白",
+          "x": 569,
+          "y": 2,
+          "w": 91,
+          "h": 144
+        },
+        {
+          "index": 2,
+          "name": "樱花草莓粉",
+          "x": 662,
+          "y": 2,
+          "w": 91,
+          "h": 144
+        },
+        {
+          "index": 3,
+          "name": "焦糖奶黄",
+          "x": 755,
+          "y": 2,
+          "w": 91,
+          "h": 144
+        }
+      ]
+    },
+    "clawfoot_bathtub": {
+      "w": 128,
+      "h": 135,
+      "layer": "floor",
+      "footDepth": 24,
+      "flippable": true,
+      "variants": [
+        {
+          "index": 0,
+          "name": "默认",
+          "x": 848,
+          "y": 2,
+          "w": 128,
+          "h": 135
+        }
+      ]
+    },
+    "bathroom_vanity": {
+      "w": 57,
+      "h": 134,
+      "layer": "floor",
+      "footDepth": 18,
+      "variants": [
+        {
+          "index": 0,
+          "name": "默认",
+          "x": 978,
+          "y": 2,
+          "w": 57,
+          "h": 134
+        }
+      ]
+    },
+    "floor_standing_lamp": {
+      "w": 42,
+      "h": 128,
+      "layer": "floor",
+      "footDepth": 16,
+      "light": {
+        "dx": 21,
+        "dy": 20,
+        "radius": 175
+      },
+      "toggleState": true,
+      "variants": [
+        {
+          "index": 0,
+          "name": "开灯",
+          "x": 1037,
+          "y": 2,
+          "w": 42,
+          "h": 128
+        },
+        {
+          "index": 1,
+          "name": "关灯",
+          "x": 1081,
+          "y": 2,
+          "w": 42,
+          "h": 128
+        }
+      ]
+    },
+    "cat_tree_condo": {
+      "w": 82,
+      "h": 126,
+      "layer": "floor",
+      "footDepth": 22,
+      "surfaces": [
+        {
+          "y": 10,
+          "x0": 7,
+          "x1": 36
+        }
+      ],
+      "variants": [
+        {
+          "index": 0,
+          "name": "默认",
+          "x": 1125,
+          "y": 2,
+          "w": 82,
+          "h": 126
+        }
+      ]
+    },
+    "fiddle_leaf_plant": {
+      "w": 65,
+      "h": 114,
+      "layer": "floor",
+      "footDepth": 18,
+      "variants": [
+        {
+          "index": 0,
+          "name": "默认",
+          "x": 1209,
+          "y": 2,
+          "w": 65,
+          "h": 114
+        }
+      ]
+    },
+    "cozy_patchwork_bed": {
+      "w": 184,
+      "h": 113,
+      "layer": "floor",
+      "footDepth": 28,
+      "flippable": true,
+      "surfaces": [
+        {
+          "y": 59,
+          "x0": 63,
+          "x1": 158
+        }
+      ],
+      "variants": [
+        {
+          "index": 0,
+          "name": "暖阳百衲被",
+          "x": 1276,
+          "y": 2,
+          "w": 184,
+          "h": 113
+        },
+        {
+          "index": 1,
+          "name": "星空靛蓝被",
+          "x": 1462,
+          "y": 2,
+          "w": 184,
+          "h": 113
+        },
+        {
+          "index": 2,
+          "name": "森系绿格被",
+          "x": 1648,
+          "y": 2,
+          "w": 184,
+          "h": 113
+        }
+      ]
+    },
+    "kitchen_stove_counter": {
+      "w": 142,
+      "h": 103,
+      "layer": "floor",
+      "footDepth": 22,
+      "surfaces": [
+        {
+          "y": 26,
+          "x0": 9,
+          "x1": 133
+        }
+      ],
+      "variants": [
+        {
+          "index": 0,
+          "name": "暖橡木",
+          "x": 1834,
+          "y": 2,
+          "w": 142,
+          "h": 103
+        },
+        {
+          "index": 1,
+          "name": "深胡桃",
+          "x": 2,
+          "y": 270,
+          "w": 142,
+          "h": 103
+        }
+      ]
+    },
+    "plush_sofa": {
+      "w": 172,
+      "h": 90,
+      "layer": "floor",
+      "footDepth": 22,
+      "surfaces": [
+        {
+          "y": 52,
+          "x0": 24,
+          "x1": 148
+        }
+      ],
+      "variants": [
+        {
+          "index": 0,
+          "name": "海盐雾霾蓝",
+          "x": 146,
+          "y": 270,
+          "w": 172,
+          "h": 90
+        },
+        {
+          "index": 1,
+          "name": "暖燕麦奶茶",
+          "x": 320,
+          "y": 270,
+          "w": 172,
+          "h": 90
+        },
+        {
+          "index": 2,
+          "name": "焦糖莓果粉",
+          "x": 494,
+          "y": 270,
+          "w": 172,
+          "h": 90
+        },
+        {
+          "index": 3,
+          "name": "森系橄榄绿",
+          "x": 668,
+          "y": 270,
+          "w": 172,
+          "h": 90
+        }
+      ]
+    },
+    "sunset_window": {
+      "w": 104,
+      "h": 90,
+      "layer": "wall",
+      "toggleState": true,
+      "glassRect": {
+        "x": 20,
+        "y": 5,
+        "w": 64,
+        "h": 71
+      },
+      "variants": [
+        {
+          "index": 0,
+          "name": "拉开窗帘",
+          "x": 842,
+          "y": 270,
+          "w": 104,
+          "h": 90
+        },
+        {
+          "index": 1,
+          "name": "拉上窗帘",
+          "x": 948,
+          "y": 270,
+          "w": 104,
+          "h": 90
+        }
+      ]
+    },
+    "dining_table": {
+      "w": 122,
+      "h": 85,
+      "layer": "floor",
+      "footDepth": 26,
+      "surfaces": [
+        {
+          "y": 16,
+          "x0": 7,
+          "x1": 115
+        }
+      ],
+      "variants": [
+        {
+          "index": 0,
+          "name": "暖橡木",
+          "x": 1054,
+          "y": 270,
+          "w": 122,
+          "h": 85
+        },
+        {
+          "index": 1,
+          "name": "深胡桃",
+          "x": 1178,
+          "y": 270,
+          "w": 122,
+          "h": 85
+        }
+      ]
+    },
+    "cozy_toilet": {
+      "w": 70,
+      "h": 78,
+      "layer": "floor",
+      "footDepth": 20,
+      "flippable": true,
+      "variants": [
+        {
+          "index": 0,
+          "name": "默认",
+          "x": 1302,
+          "y": 270,
+          "w": 70,
+          "h": 78
+        }
+      ]
+    },
+    "dining_chair": {
+      "w": 41,
+      "h": 78,
+      "layer": "floor",
+      "footDepth": 16,
+      "flippable": true,
+      "variants": [
+        {
+          "index": 0,
+          "name": "燕麦软垫",
+          "x": 1374,
+          "y": 270,
+          "w": 41,
+          "h": 78
+        },
+        {
+          "index": 1,
+          "name": "深胡桃木",
+          "x": 1417,
+          "y": 270,
+          "w": 41,
+          "h": 78
+        }
+      ]
+    },
+    "kitchen_island_counter": {
+      "w": 98,
+      "h": 77,
+      "layer": "floor",
+      "footDepth": 20,
+      "surfaces": [
+        {
+          "y": 12,
+          "x0": 6,
+          "x1": 92
+        }
+      ],
+      "variants": [
+        {
+          "index": 0,
+          "name": "暖橡木",
+          "x": 1460,
+          "y": 270,
+          "w": 98,
+          "h": 77
+        },
+        {
+          "index": 1,
+          "name": "薄荷绿漆",
+          "x": 1560,
+          "y": 270,
+          "w": 98,
+          "h": 77
+        },
+        {
+          "index": 2,
+          "name": "奶油白木",
+          "x": 1660,
+          "y": 270,
+          "w": 98,
+          "h": 77
+        }
+      ]
+    },
+    "study_desk": {
+      "w": 124,
+      "h": 76,
+      "layer": "floor",
+      "footDepth": 22,
+      "surfaces": [
+        {
+          "y": 14,
+          "x0": 7,
+          "x1": 117
+        }
+      ],
+      "variants": [
+        {
+          "index": 0,
+          "name": "暖橡木",
+          "x": 1760,
+          "y": 270,
+          "w": 124,
+          "h": 76
+        },
+        {
+          "index": 1,
+          "name": "深胡桃",
+          "x": 1886,
+          "y": 270,
+          "w": 124,
+          "h": 76
+        }
+      ]
+    },
+    "bedside_nightstand": {
+      "w": 56,
+      "h": 62,
+      "layer": "floor",
+      "footDepth": 18,
+      "surfaces": [
+        {
+          "y": 10,
+          "x0": 4,
+          "x1": 52
+        }
+      ],
+      "variants": [
+        {
+          "index": 0,
+          "name": "暖橡木",
+          "x": 2,
+          "y": 375,
+          "w": 56,
+          "h": 62
+        },
+        {
+          "index": 1,
+          "name": "深胡桃",
+          "x": 60,
+          "y": 375,
+          "w": 56,
+          "h": 62
+        }
+      ]
+    },
+    "kitchen_wall_cabinet": {
+      "w": 118,
+      "h": 60,
+      "layer": "wall",
+      "variants": [
+        {
+          "index": 0,
+          "name": "暖橡木",
+          "x": 118,
+          "y": 375,
+          "w": 118,
+          "h": 60
+        },
+        {
+          "index": 1,
+          "name": "奶油白木",
+          "x": 238,
+          "y": 375,
+          "w": 118,
+          "h": 60
+        }
+      ]
+    },
+    "coffee_table": {
+      "w": 94,
+      "h": 58,
+      "layer": "floor",
+      "footDepth": 18,
+      "surfaces": [
+        {
+          "y": 12,
+          "x0": 6,
+          "x1": 88
+        }
+      ],
+      "variants": [
+        {
+          "index": 0,
+          "name": "暖橡木",
+          "x": 358,
+          "y": 375,
+          "w": 94,
+          "h": 58
+        },
+        {
+          "index": 1,
+          "name": "深胡桃",
+          "x": 454,
+          "y": 375,
+          "w": 94,
+          "h": 58
+        }
+      ]
+    },
+    "pendant_ceiling_lamp": {
+      "w": 43,
+      "h": 58,
+      "layer": "wall",
+      "anchor": "ceiling",
+      "light": {
+        "dx": 22,
+        "dy": 51,
+        "radius": 190
+      },
+      "toggleState": true,
+      "variants": [
+        {
+          "index": 0,
+          "name": "开灯",
+          "x": 550,
+          "y": 375,
+          "w": 43,
+          "h": 58
+        },
+        {
+          "index": 1,
+          "name": "关灯",
+          "x": 595,
+          "y": 375,
+          "w": 43,
+          "h": 58
+        }
+      ]
+    },
+    "persian_cozy_rug": {
+      "w": 196,
+      "h": 58,
+      "layer": "rug",
+      "surfaces": [
+        {
+          "y": 32,
+          "x0": 20,
+          "x1": 176
+        }
+      ],
+      "variants": [
+        {
+          "index": 0,
+          "name": "暖红波斯毯",
+          "x": 640,
+          "y": 375,
+          "w": 196,
+          "h": 58
+        },
+        {
+          "index": 1,
+          "name": "海盐蓝纹毯",
+          "x": 838,
+          "y": 375,
+          "w": 196,
+          "h": 58
+        },
+        {
+          "index": 2,
+          "name": "森系橄榄毯",
+          "x": 1036,
+          "y": 375,
+          "w": 196,
+          "h": 58
+        }
+      ]
+    },
+    "desktop_pc_set": {
+      "w": 58,
+      "h": 56,
+      "layer": "prop",
+      "variants": [
+        {
+          "index": 0,
+          "name": "默认",
+          "x": 1234,
+          "y": 375,
+          "w": 58,
+          "h": 56
+        }
+      ]
+    },
+    "plush_pet_bed": {
+      "w": 68,
+      "h": 51,
+      "layer": "floor",
+      "footDepth": 20,
+      "surfaces": [
+        {
+          "y": 29,
+          "x0": 15,
+          "x1": 53
+        }
+      ],
+      "variants": [
+        {
+          "index": 0,
+          "name": "焦糖南瓜窝",
+          "x": 1294,
+          "y": 375,
+          "w": 68,
+          "h": 51
+        },
+        {
+          "index": 1,
+          "name": "薄荷云朵窝",
+          "x": 1364,
+          "y": 375,
+          "w": 68,
+          "h": 51
+        },
+        {
+          "index": 2,
+          "name": "樱花软垫窝",
+          "x": 1434,
+          "y": 375,
+          "w": 68,
+          "h": 51
+        }
+      ]
+    },
+    "framed_landscape_art": {
+      "w": 64,
+      "h": 46,
+      "layer": "wall",
+      "variants": [
+        {
+          "index": 0,
+          "name": "落日余晖",
+          "x": 1504,
+          "y": 375,
+          "w": 64,
+          "h": 46
+        },
+        {
+          "index": 1,
+          "name": "海风晴空",
+          "x": 1570,
+          "y": 375,
+          "w": 64,
+          "h": 46
+        },
+        {
+          "index": 2,
+          "name": "森林翠绿",
+          "x": 1636,
+          "y": 375,
+          "w": 64,
+          "h": 46
+        }
+      ]
+    },
+    "table_lamp_warm": {
+      "w": 29,
+      "h": 44,
+      "layer": "prop",
+      "light": {
+        "dx": 14,
+        "dy": 16,
+        "radius": 135
+      },
+      "variants": [
+        {
+          "index": 0,
+          "name": "奶油暖灯(亮)",
+          "x": 1702,
+          "y": 375,
+          "w": 29,
+          "h": 44
+        },
+        {
+          "index": 1,
+          "name": "奶油暖灯(灭)",
+          "x": 1733,
+          "y": 375,
+          "w": 29,
+          "h": 44
+        },
+        {
+          "index": 2,
+          "name": "樱花粉灯(亮)",
+          "x": 1764,
+          "y": 375,
+          "w": 29,
+          "h": 44
+        },
+        {
+          "index": 3,
+          "name": "樱花粉灯(灭)",
+          "x": 1795,
+          "y": 375,
+          "w": 29,
+          "h": 44
+        },
+        {
+          "index": 4,
+          "name": "抹茶绿灯(亮)",
+          "x": 1826,
+          "y": 375,
+          "w": 29,
+          "h": 44
+        },
+        {
+          "index": 5,
+          "name": "抹茶绿灯(灭)",
+          "x": 1857,
+          "y": 375,
+          "w": 29,
+          "h": 44
+        }
+      ]
+    },
+    "wall_sconce_lamp": {
+      "w": 31,
+      "h": 44,
+      "layer": "wall",
+      "light": {
+        "dx": 16,
+        "dy": 13,
+        "radius": 125
+      },
+      "toggleState": true,
+      "variants": [
+        {
+          "index": 0,
+          "name": "开灯",
+          "x": 1888,
+          "y": 375,
+          "w": 31,
+          "h": 44
+        },
+        {
+          "index": 1,
+          "name": "关灯",
+          "x": 1921,
+          "y": 375,
+          "w": 31,
+          "h": 44
+        }
+      ]
+    },
+    "bath_checkered_mat": {
+      "w": 98,
+      "h": 42,
+      "layer": "rug",
+      "surfaces": [
+        {
+          "y": 22,
+          "x0": 14,
+          "x1": 84
+        }
+      ],
+      "variants": [
+        {
+          "index": 0,
+          "name": "水蓝格纹垫",
+          "x": 2,
+          "y": 439,
+          "w": 98,
+          "h": 42
+        },
+        {
+          "index": 1,
+          "name": "蜜桃粉格垫",
+          "x": 102,
+          "y": 439,
+          "w": 98,
+          "h": 42
+        },
+        {
+          "index": 2,
+          "name": "奶油鹅黄垫",
+          "x": 202,
+          "y": 439,
+          "w": 98,
+          "h": 42
+        }
+      ]
+    },
+    "chibi_figurine_trio": {
+      "w": 19,
+      "h": 40,
+      "layer": "prop",
+      "variants": [
+        {
+          "index": 0,
+          "name": "栗发毛衣款",
+          "x": 302,
+          "y": 439,
+          "w": 19,
+          "h": 40
+        },
+        {
+          "index": 1,
+          "name": "珊瑚红发款",
+          "x": 323,
+          "y": 439,
+          "w": 19,
+          "h": 40
+        },
+        {
+          "index": 2,
+          "name": "海盐蓝发款",
+          "x": 344,
+          "y": 439,
+          "w": 19,
+          "h": 40
+        }
+      ]
+    },
+    "wall_clock": {
+      "w": 36,
+      "h": 36,
+      "layer": "wall",
+      "variants": [
+        {
+          "index": 0,
+          "name": "默认",
+          "x": 365,
+          "y": 439,
+          "w": 36,
+          "h": 36
+        }
+      ]
+    },
+    "potted_succulent": {
+      "w": 26,
+      "h": 34,
+      "layer": "prop",
+      "variants": [
+        {
+          "index": 0,
+          "name": "圆润多肉",
+          "x": 403,
+          "y": 439,
+          "w": 26,
+          "h": 34
+        },
+        {
+          "index": 1,
+          "name": "粉紫法师",
+          "x": 431,
+          "y": 439,
+          "w": 26,
+          "h": 34
+        }
+      ]
+    },
+    "book_stack": {
+      "w": 32,
+      "h": 33,
+      "layer": "prop",
+      "variants": [
+        {
+          "index": 0,
+          "name": "默认",
+          "x": 459,
+          "y": 439,
+          "w": 32,
+          "h": 33
+        }
+      ]
+    },
+    "sleeping_ginger_cat_prop": {
+      "w": 52,
+      "h": 33,
+      "layer": "prop",
+      "variants": [
+        {
+          "index": 0,
+          "name": "橘猫团团",
+          "x": 493,
+          "y": 439,
+          "w": 52,
+          "h": 33
+        },
+        {
+          "index": 1,
+          "name": "奶牛花花",
+          "x": 547,
+          "y": 439,
+          "w": 52,
+          "h": 33
+        },
+        {
+          "index": 2,
+          "name": "银渐层点点",
+          "x": 601,
+          "y": 439,
+          "w": 52,
+          "h": 33
+        }
+      ]
+    },
+    "wall_shelf_wide": {
+      "w": 92,
+      "h": 31,
+      "layer": "wall",
+      "surfaces": [
+        {
+          "y": 11,
+          "x0": 6,
+          "x1": 86
+        }
+      ],
+      "variants": [
+        {
+          "index": 0,
+          "name": "暖橡木",
+          "x": 655,
+          "y": 439,
+          "w": 92,
+          "h": 31
+        },
+        {
+          "index": 1,
+          "name": "深胡桃",
+          "x": 749,
+          "y": 439,
+          "w": 92,
+          "h": 31
+        }
+      ]
+    },
+    "coffee_mug_steaming": {
+      "w": 20,
+      "h": 28,
+      "layer": "prop",
+      "variants": [
+        {
+          "index": 0,
+          "name": "奶油焦糖杯",
+          "x": 843,
+          "y": 439,
+          "w": 20,
+          "h": 28
+        },
+        {
+          "index": 1,
+          "name": "薄荷马克杯",
+          "x": 865,
+          "y": 439,
+          "w": 20,
+          "h": 28
+        },
+        {
+          "index": 2,
+          "name": "草莓粉杯",
+          "x": 887,
+          "y": 439,
+          "w": 20,
+          "h": 28
+        }
+      ]
+    },
+    "frying_pan_simmer": {
+      "w": 44,
+      "h": 27,
+      "layer": "prop",
+      "variants": [
+        {
+          "index": 0,
+          "name": "默认",
+          "x": 909,
+          "y": 439,
+          "w": 44,
+          "h": 27
+        }
+      ]
+    },
+    "plate_omurice": {
+      "w": 38,
+      "h": 20,
+      "layer": "prop",
+      "variants": [
+        {
+          "index": 0,
+          "name": "日式蛋包饭",
+          "x": 955,
+          "y": 439,
+          "w": 38,
+          "h": 20
+        },
+        {
+          "index": 1,
+          "name": "草莓鲜果派",
+          "x": 995,
+          "y": 439,
+          "w": 38,
+          "h": 20
+        }
+      ]
+    }
+  }
+}

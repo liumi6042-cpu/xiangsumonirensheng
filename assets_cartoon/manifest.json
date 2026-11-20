@@ -1,0 +1,169 @@
+{
+  "style": "Miga Town 2D Vector Cartoon (Miga Room Scale on 960x540, #FFFFFF bg, #2b1810 outline)",
+  "items": {
+    "char_girl_basic": {
+      "w": 85,
+      "h": 160
+    },
+    "char_boy_basic": {
+      "w": 83,
+      "h": 164
+    },
+    "room_door": {
+      "w": 174,
+      "h": 276
+    },
+    "stairwell_door": {
+      "w": 196,
+      "h": 276
+    },
+    "retro_fridge": {
+      "w": 142,
+      "h": 248
+    },
+    "tall_bookshelf": {
+      "w": 195,
+      "h": 262
+    },
+    "wardrobe": {
+      "w": 208,
+      "h": 260
+    },
+    "kitchen_stove_counter": {
+      "w": 192,
+      "h": 152
+    },
+    "kitchen_island_counter": {
+      "w": 198,
+      "h": 136
+    },
+    "dining_table": {
+      "w": 212,
+      "h": 144
+    },
+    "study_desk": {
+      "w": 201,
+      "h": 138
+    },
+    "plush_sofa": {
+      "w": 296,
+      "h": 146
+    },
+    "coffee_table": {
+      "w": 170,
+      "h": 96
+    },
+    "dining_chair": {
+      "w": 78,
+      "h": 136
+    },
+    "floor_standing_lamp": {
+      "w": 98,
+      "h": 224
+    },
+    "cozy_patchwork_bed": {
+      "w": 300,
+      "h": 233
+    },
+    "bedside_nightstand": {
+      "w": 95,
+      "h": 108
+    },
+    "fiddle_leaf_plant": {
+      "w": 107,
+      "h": 206
+    },
+    "persian_cozy_rug": {
+      "w": 336,
+      "h": 144
+    },
+    "clawfoot_bathtub": {
+      "w": 224,
+      "h": 158
+    },
+    "bathroom_vanity": {
+      "w": 147,
+      "h": 236
+    },
+    "cozy_toilet": {
+      "w": 104,
+      "h": 136
+    },
+    "bath_checkered_mat": {
+      "w": 168,
+      "h": 68
+    },
+    "cat_tree_condo": {
+      "w": 160,
+      "h": 222
+    },
+    "plush_pet_bed": {
+      "w": 118,
+      "h": 78
+    },
+    "sleeping_ginger_cat": {
+      "w": 94,
+      "h": 65
+    },
+    "sunset_window": {
+      "w": 176,
+      "h": 172
+    },
+    "kitchen_wall_cabinet": {
+      "w": 151,
+      "h": 124
+    },
+    "wall_shelf_wide": {
+      "w": 162,
+      "h": 83
+    },
+    "framed_landscape_art": {
+      "w": 118,
+      "h": 86
+    },
+    "wall_clock": {
+      "w": 68,
+      "h": 68
+    },
+    "pendant_ceiling_lamp": {
+      "w": 85,
+      "h": 100
+    },
+    "desktop_pc_set": {
+      "w": 102,
+      "h": 102
+    },
+    "table_lamp_warm": {
+      "w": 63,
+      "h": 74
+    },
+    "wall_sconce_lamp": {
+      "w": 55,
+      "h": 76
+    },
+    "frying_pan_simmer": {
+      "w": 78,
+      "h": 56
+    },
+    "plate_omurice": {
+      "w": 68,
+      "h": 42
+    },
+    "coffee_mug_steaming": {
+      "w": 50,
+      "h": 54
+    },
+    "potted_succulent": {
+      "w": 48,
+      "h": 60
+    },
+    "book_stack": {
+      "w": 66,
+      "h": 56
+    },
+    "strawberry_cake": {
+      "w": 65,
+      "h": 74
+    }
+  }
+}

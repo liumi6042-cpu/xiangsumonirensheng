@@ -1,4 +1,18 @@
 import './style.css';
+import {
+  RESIDENT_DEF_MAP,
+  assignResidentSit,
+  assignResidentSleep,
+  assignResidentWalk,
+  getAvailableSeatsOnFloor,
+  getBedSleepTargetsOnFloor,
+  hitTestResident,
+  triggerResidentWave,
+  updateResidents,
+  type ResidentAction,
+  type ResidentId,
+  type ResidentState,
+} from './core/characters';
 import { GameClock } from './core/clock';
 import {
   evaluatePlacement,
@@ -8,6 +22,7 @@ import {
 } from './core/placement';
 import {
   CEILING_BOTTOM_Y,
+  FLOOR_MAX_FOOT_Y,
   WALL_FLOOR_Y,
   canUnlockFloor2,
   clearSaveState,
@@ -34,6 +49,29 @@ async function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
+async function loadSurfaceTextures(): Promise<Map<string, HTMLImageElement>> {
+  const urls = new Set<string>();
+  for (const w of WALL_STYLES) urls.add(w.textureUrl);
+  for (const f of FLOOR_STYLES) urls.add(f.textureUrl);
+
+  const entries = await Promise.all(
+    Array.from(urls).map(async (url) => {
+      try {
+        const im = await loadImage(url);
+        return [url, im] as const;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  const map = new Map<string, HTMLImageElement>();
+  for (const e of entries) {
+    if (e) map.set(e[0], e[1]);
+  }
+  return map;
+}
+
 async function bootstrap(): Promise<void> {
   const stageWrap = document.getElementById('stage-wrap') as HTMLElement;
   const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
@@ -42,28 +80,25 @@ async function bootstrap(): Promise<void> {
   const modalSlot = document.getElementById('modal-slot') as HTMLElement;
   const toastSlot = document.getElementById('toast-slot') as HTMLElement;
 
-  const [atlasResp, atlasImg] = await Promise.all([
+  const [atlasResp, atlasImg, surfaceImages] = await Promise.all([
     fetch('./assets/furniture_atlas.json'),
     loadImage('./assets/furniture_atlas.png'),
+    loadSurfaceTextures(),
   ]);
   const atlas = (await atlasResp.json()) as AtlasJson;
 
   let state: GameSaveState = loadSaveState();
   const clock = new GameClock(state.day, state.minuteOfDay, state.lastSundayBillDay);
-  const renderer = new PixelRenderer(canvas, atlasImg, atlas);
+  const renderer = new PixelRenderer(canvas, atlasImg, atlas, surfaceImages);
   renderer.resizeToDisplay();
 
-  // Interactive controller state
   let buildMode = false;
   let cameraX = 0;
   let selectedUid: string | null = null;
+  let selectedResidentId: ResidentId | null = null;
+
   let placingMode:
-    | {
-        kind: 'new';
-        itemId: string;
-        variant: number;
-        flipped: boolean;
-      }
+    | { kind: 'new'; itemId: string; variant: number; flipped: boolean }
     | {
         kind: 'inventory';
         invUid: string;
@@ -89,12 +124,23 @@ async function bootstrap(): Promise<void> {
   let pointerWorld = { x: 240, y: 200 };
   let lastCandidate: PlacementCandidate | null = null;
 
-  // Camera pan state
+  // Camera pan state & Play Mode character drag state
   let isPanning = false;
   let panMoved = false;
   let panStartClientX = 0;
   let panStartCamX = 0;
   const pressedKeys = new Set<string>();
+
+  let draggingRes: {
+    res: ResidentState;
+    startClientX: number;
+    startClientY: number;
+    moved: boolean;
+    worldX: number;
+    worldY: number;
+    snapSeat: ReturnType<typeof getAvailableSeatsOnFloor>[number] | null;
+    snapBed: ReturnType<typeof getBedSleepTargetsOnFloor>[number] | null;
+  } | null = null;
 
   const clampCamera = (): void => {
     const { viewW } = renderer.getViewDimensions();
@@ -106,11 +152,23 @@ async function bootstrap(): Promise<void> {
   const getFloorItems = (): PlacedItem[] =>
     state.placedItems.filter((i) => i.floor === state.activeFloor);
 
+  const getFloorResidents = (): ResidentState[] =>
+    state.residents.filter((r) => r.present && r.floor === state.activeFloor);
+
   const save = (): void => {
     state.day = clock.day;
     state.minuteOfDay = clock.minuteOfDay;
     state.lastSundayBillDay = clock.getLastSundayBillDay();
     persistSaveState(state);
+  };
+
+  const shiftChildren = (parentUid: string, dx: number, dy: number): void => {
+    for (const child of state.placedItems) {
+      if (child.parentId === parentUid) {
+        child.x += dx;
+        child.y += dy;
+      }
+    }
   };
 
   const cancelActiveTool = (): void => {
@@ -132,15 +190,6 @@ async function bootstrap(): Promise<void> {
     canvas.classList.remove('placing');
   };
 
-  const shiftChildren = (parentUid: string, dx: number, dy: number): void => {
-    for (const child of state.placedItems) {
-      if (child.parentId === parentUid) {
-        child.x += dx;
-        child.y += dy;
-      }
-    }
-  };
-
   const hud = new GameHud(hudOverlay, drawerSlot, modalSlot, toastSlot, atlasImg, atlas, {
     onSetSpeed: (s) => {
       clock.speed = s;
@@ -151,6 +200,9 @@ async function bootstrap(): Promise<void> {
       if (!buildMode) {
         cancelActiveTool();
         selectedUid = null;
+      } else {
+        selectedResidentId = null;
+        draggingRes = null;
       }
       syncHud();
       requestAnimationFrame(() => {
@@ -163,6 +215,7 @@ async function bootstrap(): Promise<void> {
       if (!state.floors[floor].unlocked) return;
       cancelActiveTool();
       selectedUid = null;
+      selectedResidentId = null;
       state.activeFloor = floor;
       cameraX = 0;
       clampCamera();
@@ -261,7 +314,6 @@ async function bootstrap(): Promise<void> {
       if (!selectedUid) return;
       const item = state.placedItems.find((i) => i.uid === selectedUid);
       if (!item) return;
-      // Pack item + any tabletop props resting on it cleanly into inventory
       const children = state.placedItems.filter((c) => c.parentId === item.uid);
       const toPack = [item, ...children];
       const packIds = new Set(toPack.map((p) => p.uid));
@@ -321,7 +373,6 @@ async function bootstrap(): Promise<void> {
         f.floorSegments.push(lastFloor);
       }
       state.activeFloor = floor;
-      // Pan gently toward newly opened right space
       cameraX = Math.max(0, getFloorWidthPx(state, floor) - renderer.getViewDimensions().viewW);
       save();
       hud.pushToast(`扩建成功！${floor}F 空间已扩展到 ${f.gridCount} 格`, 'good');
@@ -336,14 +387,13 @@ async function bootstrap(): Promise<void> {
       state.coins -= check.cost;
       state.floors[2].unlocked = true;
       state.activeFloor = 2;
-      // Place a starter stairwell door + warm ceiling lamp on 2F automatically
       state.placedItems.push(
         {
           uid: `item_${state.nextUid++}`,
           itemId: 'stairwell_door_1f',
           floor: 2,
           x: 618,
-          y: WALL_FLOOR_Y - (atlas.items['stairwell_door_1f']?.h ?? 172),
+          y: WALL_FLOOR_Y - (atlas.items['stairwell_door_1f']?.h ?? 226),
           variant: 1,
           flipped: false,
           isActive: true,
@@ -374,7 +424,7 @@ async function bootstrap(): Promise<void> {
     onGrantTestCoins: () => {
       state.coins += ECONOMY.testStipendAmount;
       save();
-      hud.pushToast(`已发放 Phase 1 装修测试津贴 +${ECONOMY.testStipendAmount} G`, 'good');
+      hud.pushToast(`已发放装修测试津贴 +${ECONOMY.testStipendAmount} G`, 'good');
       syncHud();
     },
     onJumpTime: (hour) => {
@@ -393,16 +443,130 @@ async function bootstrap(): Promise<void> {
       clock.day = state.day;
       clock.minuteOfDay = state.minuteOfDay;
       selectedUid = null;
+      selectedResidentId = null;
       cancelActiveTool();
       cameraX = 0;
-      hud.pushToast('已恢复初始温馨小屋与 1,200 G 启动资金', 'good');
+      hud.pushToast('已恢复初始温馨小屋、原创角色与 1,200 G 启动资金', 'good');
       syncHud();
     },
     onShowIslandPreview: () => {
       hud.pushToast(
-        '🗺️ 单屏小岛 8 大地点（海风咖啡馆、百货、公园、工坊、宠物店、诊所、海边夜市）将在 Phase 4 正式连通！',
+        '🗺️ 小镇室外咖啡街景、公园等 8 大地点地图将在 Phase 3-4 逐步连通！',
         'normal'
       );
+    },
+    // Phase 2 resident controls
+    onSetResidentOutfit: (id, outfit) => {
+      const res = state.residents.find((r) => r.id === id);
+      if (!res) return;
+      res.outfit = outfit;
+      triggerResidentWave(res, '✨');
+      save();
+      syncHud();
+    },
+    onTriggerResidentAction: (id, action: ResidentAction) => {
+      const res = state.residents.find((r) => r.id === id);
+      if (!res || !res.present) return;
+      const floorW = getFloorWidthPx(state, res.floor);
+      const placed = state.placedItems.filter((p) => p.floor === res.floor);
+      if (action === 'wave') {
+        triggerResidentWave(res);
+      } else if (action === 'walk') {
+        assignResidentWalk(res, floorW);
+      } else if (action === 'sit') {
+        const seats = getAvailableSeatsOnFloor(placed, state.residents, atlas, res.id);
+        if (seats.length === 0) {
+          hud.pushToast(`${RESIDENT_DEF_MAP.get(id)?.name ?? ''} 找不到空着的沙发或椅子啦`, 'warn');
+          return;
+        }
+        assignResidentSit(res, seats[Math.floor(Math.random() * seats.length)]);
+      } else if (action === 'sleep') {
+        const beds = getBedSleepTargetsOnFloor(placed, state.residents, atlas, res.id);
+        if (beds.length === 0) {
+          hud.pushToast('当前楼层没有空床铺，先摆放一张百衲软床吧', 'warn');
+          return;
+        }
+        assignResidentSleep(res, beds[0]);
+      }
+      save();
+      syncHud();
+    },
+    onToggleResidentPresence: (id) => {
+      const res = state.residents.find((r) => r.id === id);
+      if (!res) return;
+      res.present = !res.present;
+      if (res.present) {
+        res.floor = state.activeFloor;
+        const viewCenterX = cameraX + renderer.getViewDimensions().viewW * 0.5;
+        const floorW = getFloorWidthPx(state, state.activeFloor);
+        res.x = Math.max(70, Math.min(floorW - 70, viewCenterX + (Math.random() - 0.5) * 140));
+        res.y = 466;
+        triggerResidentWave(res, '👋');
+        selectedResidentId = res.id;
+        hud.pushToast(`${RESIDENT_DEF_MAP.get(id)?.name ?? ''} 进屋来做客啦！`, 'good');
+      } else {
+        res.seatedUid = undefined;
+        res.sleepBedUid = undefined;
+        if (selectedResidentId === id) selectedResidentId = null;
+      }
+      save();
+      syncHud();
+    },
+    onMoveResidentFloor: (id, floor) => {
+      if (!state.floors[floor].unlocked) return;
+      const res = state.residents.find((r) => r.id === id);
+      if (!res) return;
+      res.present = true;
+      res.floor = floor;
+      res.seatedUid = undefined;
+      res.sleepBedUid = undefined;
+      res.x = 640;
+      res.y = 462;
+      state.activeFloor = floor;
+      cameraX = Math.max(0, 640 - renderer.getViewDimensions().viewW * 0.5);
+      clampCamera();
+      triggerResidentWave(res, '🪜');
+      save();
+      syncHud();
+    },
+    onFocusResident: (id) => {
+      const res = state.residents.find((r) => r.id === id);
+      if (!res || !res.present) return;
+      state.activeFloor = res.floor;
+      cameraX = res.x - renderer.getViewDimensions().viewW * 0.5;
+      clampCamera();
+      selectedResidentId = res.id;
+      triggerResidentWave(res);
+      save();
+      syncHud();
+    },
+    onClearSelectedResident: () => {
+      selectedResidentId = null;
+      syncHud();
+    },
+    onSummonAllResidents: () => {
+      const viewCenter = cameraX + renderer.getViewDimensions().viewW * 0.5;
+      const floorW = getFloorWidthPx(state, state.activeFloor);
+      state.residents.forEach((r, idx) => {
+        r.present = true;
+        r.floor = state.activeFloor;
+        r.seatedUid = undefined;
+        r.sleepBedUid = undefined;
+        const spread = (idx - 3) * 86;
+        r.x = Math.max(60, Math.min(floorW - 60, viewCenter + spread));
+        r.y = 448 + (idx % 2) * 32;
+        triggerResidentWave(r);
+      });
+      hud.pushToast(`全部 7 位小镇成员与柴犬已在 ${state.activeFloor}F 集合！`, 'good');
+      save();
+      syncHud();
+    },
+    onWaveAllResidents: () => {
+      for (const r of state.residents) {
+        if (r.present) triggerResidentWave(r);
+      }
+      save();
+      syncHud();
     },
   });
 
@@ -432,11 +596,16 @@ async function bootstrap(): Promise<void> {
     const selectedItem = selectedUid
       ? state.placedItems.find((i) => i.uid === selectedUid && i.floor === state.activeFloor) ?? null
       : null;
+    const selectedResident =
+      !buildMode && selectedResidentId
+        ? state.residents.find((r) => r.id === selectedResidentId && r.present && r.floor === state.activeFloor) ?? null
+        : null;
     hud.update({
       state,
       clock,
       buildMode,
       selectedItem,
+      selectedResident,
       activeToolLabel: getActiveToolLabel(),
       placingItemId: placingMode?.itemId ?? null,
       paintStyleId: paintMode?.styleId ?? null,
@@ -444,8 +613,6 @@ async function bootstrap(): Promise<void> {
       viewW: renderer.getViewDimensions().viewW,
     });
   };
-
-  // --- Pointer & Keyboard Interactions ---
 
   const updatePlacementPreview = (): void => {
     if (!placingMode) {
@@ -464,6 +631,32 @@ async function bootstrap(): Promise<void> {
     );
   };
 
+  const computeDragSnap = (worldX: number, worldY: number, resId: ResidentId) => {
+    const placed = getFloorItems();
+    const seats = getAvailableSeatsOnFloor(placed, state.residents, atlas, resId);
+    let snapSeat: (typeof seats)[number] | null = null;
+    let bestSeatDist = 52;
+    for (const s of seats) {
+      const d = Math.hypot(worldX - s.seatX, worldY - (s.seatFootY - 36));
+      if (d < bestSeatDist) {
+        bestSeatDist = d;
+        snapSeat = s;
+      }
+    }
+
+    const beds = getBedSleepTargetsOnFloor(placed, state.residents, atlas, resId);
+    let snapBed: (typeof beds)[number] | null = null;
+    let bestBedDist = 66;
+    for (const b of beds) {
+      const d = Math.hypot(worldX - b.x, worldY - (b.footY - 40));
+      if (d < bestBedDist) {
+        bestBedDist = d;
+        snapBed = b;
+      }
+    }
+    return { snapSeat, snapBed };
+  };
+
   canvas.addEventListener('pointerdown', (e) => {
     if (e.button === 2) {
       cancelActiveTool();
@@ -474,7 +667,6 @@ async function bootstrap(): Promise<void> {
 
     pointerWorld = renderer.screenToWorld(e.clientX, e.clientY, cameraX);
 
-    // Handle active paint brush click
     if (buildMode && paintMode) {
       const f = state.floors[state.activeFloor];
       const col = getGridColumnFromWorldX(pointerWorld.x, f.gridCount);
@@ -494,7 +686,6 @@ async function bootstrap(): Promise<void> {
       return;
     }
 
-    // Handle active placement click
     if (buildMode && placingMode) {
       updatePlacementPreview();
       if (!lastCandidate || !lastCandidate.valid) {
@@ -526,7 +717,6 @@ async function bootstrap(): Promise<void> {
         };
         state.placedItems.push(newItem);
         selectedUid = newItem.uid;
-        // Keep placing props seamlessly for rapid decorating if Shift held or for cheap T1 props, else finish
         if (def.tier !== 'T1' || state.coins < def.price) {
           placingMode = null;
           canvas.classList.remove('placing');
@@ -583,7 +773,25 @@ async function bootstrap(): Promise<void> {
       }
     }
 
-    // Otherwise start panning (or click-select on pointerup if didn't drag)
+    // Play mode: hit-test residents/pets first for direct click or Miga-style drag & drop
+    if (!buildMode) {
+      const hitRes = hitTestResident(pointerWorld.x, pointerWorld.y, state.activeFloor, state.residents, atlas);
+      if (hitRes) {
+        draggingRes = {
+          res: hitRes,
+          startClientX: e.clientX,
+          startClientY: e.clientY,
+          moved: false,
+          worldX: hitRes.x,
+          worldY: hitRes.y,
+          snapSeat: null,
+          snapBed: null,
+        };
+        canvas.classList.add('dragging');
+        return;
+      }
+    }
+
     isPanning = true;
     panMoved = false;
     panStartClientX = e.clientX;
@@ -606,6 +814,22 @@ async function bootstrap(): Promise<void> {
       updatePlacementPreview();
     }
 
+    if (draggingRes) {
+      const distMoved = Math.hypot(e.clientX - draggingRes.startClientX, e.clientY - draggingRes.startClientY);
+      if (distMoved > 6) {
+        draggingRes.moved = true;
+      }
+      const floorW = getFloorWidthPx(state, state.activeFloor);
+      const clampedX = Math.max(46, Math.min(floorW - 46, pointerWorld.x));
+      const clampedY = Math.max(362, Math.min(FLOOR_MAX_FOOT_Y - 4, pointerWorld.y + 32));
+      draggingRes.worldX = clampedX;
+      draggingRes.worldY = clampedY;
+      const { snapSeat, snapBed } = computeDragSnap(pointerWorld.x, pointerWorld.y, draggingRes.res.id);
+      draggingRes.snapSeat = snapSeat;
+      draggingRes.snapBed = snapBed;
+      return;
+    }
+
     if (isPanning) {
       const rect = canvas.getBoundingClientRect();
       const scale = renderer.getViewDimensions().viewW / Math.max(1, rect.width);
@@ -620,6 +844,32 @@ async function bootstrap(): Promise<void> {
   });
 
   window.addEventListener('pointerup', (e) => {
+    if (draggingRes) {
+      const dr = draggingRes;
+      draggingRes = null;
+      canvas.classList.remove('dragging');
+      selectedResidentId = dr.res.id;
+
+      if (!dr.moved) {
+        triggerResidentWave(dr.res);
+      } else if (dr.snapSeat) {
+        assignResidentSit(dr.res, dr.snapSeat);
+      } else if (dr.snapBed) {
+        assignResidentSleep(dr.res, dr.snapBed);
+      } else {
+        dr.res.seatedUid = undefined;
+        dr.res.seatedSlotIdx = undefined;
+        dr.res.sleepBedUid = undefined;
+        dr.res.action = 'idle';
+        dr.res.x = dr.worldX;
+        dr.res.y = dr.worldY;
+        dr.res.stateTimer = 2.4;
+      }
+      save();
+      syncHud();
+      return;
+    }
+
     if (!isPanning) return;
     isPanning = false;
     canvas.classList.remove('dragging');
@@ -631,21 +881,28 @@ async function bootstrap(): Promise<void> {
       if (buildMode) {
         selectedUid = hit ? hit.uid : null;
         syncHud();
-      } else if (hit) {
-        const meta = atlas.items[hit.itemId];
-        if (meta?.light || meta?.toggleState) {
-          hit.isActive = !hit.isActive;
-          save();
+      } else {
+        if (!hit && selectedResidentId) {
+          selectedResidentId = null;
           syncHud();
-        } else if (meta?.isStairs) {
-          if (state.floors[2].unlocked) {
-            state.activeFloor = state.activeFloor === 1 ? 2 : 1;
-            cameraX = 0;
-            clampCamera();
+          return;
+        }
+        if (hit) {
+          const meta = atlas.items[hit.itemId];
+          if (meta?.light || meta?.toggleState) {
+            hit.isActive = !hit.isActive;
             save();
             syncHud();
-          } else {
-            hud.pushToast(`二楼尚未加盖，点击右上角「🧱 扩建」即可解锁 (${4500} G)`, 'normal');
+          } else if (meta?.isStairs) {
+            if (state.floors[2].unlocked) {
+              state.activeFloor = state.activeFloor === 1 ? 2 : 1;
+              cameraX = 0;
+              clampCamera();
+              save();
+              syncHud();
+            } else {
+              hud.pushToast(`二楼尚未加盖，点击右上角「🧱 扩建」即可解锁 (4,500 G)`, 'normal');
+            }
           }
         }
       }
@@ -679,6 +936,8 @@ async function bootstrap(): Promise<void> {
         cancelActiveTool();
       } else if (selectedUid) {
         selectedUid = null;
+      } else if (selectedResidentId) {
+        selectedResidentId = null;
       } else if (buildMode) {
         buildMode = false;
       }
@@ -688,6 +947,7 @@ async function bootstrap(): Promise<void> {
   window.addEventListener('keyup', (e) => {
     pressedKeys.delete(e.key.toLowerCase());
   });
+
   const resizeObs = new ResizeObserver(() => {
     renderer.resizeToDisplay();
     clampCamera();
@@ -701,21 +961,20 @@ async function bootstrap(): Promise<void> {
     syncHud();
   });
 
-  // Initial HUD render
   syncHud();
 
   // --- Main Loop ---
   let lastTime = performance.now();
   let hudClockTick = 0;
   let elapsedSec = 0;
+  let lastSelectedAction = '';
 
   const frame = (now: number): void => {
     const dt = Math.min(0.1, (now - lastTime) / 1000);
     lastTime = now;
     elapsedSec += dt;
 
-    // Smooth keyboard camera panning
-    const panSpeed = 340 * dt;
+    const panSpeed = 360 * dt;
     let panKeyMoved = false;
     if (pressedKeys.has('a') || pressedKeys.has('arrowleft')) {
       cameraX -= panSpeed;
@@ -730,7 +989,6 @@ async function bootstrap(): Promise<void> {
       hud.updateScrollArrowsOnly(state, cameraX, renderer.getViewDimensions().viewW);
     }
 
-    // Advance GameClock (档位 B)
     const { dayChanged, triggerSundayBill } = clock.advance(dt);
     if (triggerSundayBill) {
       const bill = calculateWeeklyBill(getTotalUnlockedGrids(state), getTotalAssetValue(state));
@@ -743,6 +1001,28 @@ async function bootstrap(): Promise<void> {
       syncHud();
     }
 
+    // Advance Phase 2 resident AI cleanly
+    updateResidents(
+      state.residents,
+      state.placedItems,
+      state.floors,
+      atlas,
+      dt,
+      clock.speed,
+      clock.hour,
+      draggingRes?.res.id ?? null
+    );
+
+    // Sync floating action bar smoothly if selected resident changed state autonomously
+    if (selectedResidentId && !buildMode) {
+      const selR = state.residents.find((r) => r.id === selectedResidentId);
+      const sig = selR ? `${selR.action}:${selR.outfit}` : '';
+      if (sig !== lastSelectedAction) {
+        lastSelectedAction = sig;
+        syncHud();
+      }
+    }
+
     hudClockTick += dt;
     if (hudClockTick >= 0.45) {
       hudClockTick = 0;
@@ -752,10 +1032,26 @@ async function bootstrap(): Promise<void> {
     renderer.render({
       floor: state.floors[state.activeFloor],
       placedOnFloor: getFloorItems(),
+      residentsOnFloor: getFloorResidents(),
       clock,
       cameraX,
       buildMode,
       selectedUid,
+      selectedResidentId: buildMode ? null : selectedResidentId,
+      draggingResident:
+        draggingRes && draggingRes.moved
+          ? {
+              resident: draggingRes.res,
+              worldX: draggingRes.worldX,
+              worldY: draggingRes.worldY,
+              snapSeat: draggingRes.snapSeat
+                ? { x: draggingRes.snapSeat.seatX, y: draggingRes.snapSeat.seatFootY }
+                : null,
+              snapBed: draggingRes.snapBed
+                ? { x: draggingRes.snapBed.x, y: draggingRes.snapBed.footY }
+                : null,
+            }
+          : null,
       paintMode,
       placementPreview:
         buildMode && placingMode && lastCandidate

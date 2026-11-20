@@ -3,18 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>像素小岛生活 · Phase 1 居家装修</title>
+    <meta name="theme-color" content="#FFF9EE" />
+    <title>漫时光小屋 · 居家装修与人物生活</title>
   </head>
   <body>
-    <div id="app">
+    <main id="app" aria-label="漫时光小屋">
       <div id="stage-wrap">
-        <canvas id="game-canvas" aria-label="2D像素居家横版剖面画布"></canvas>
+        <canvas id="game-canvas" aria-label="横版小屋，可拖动浏览房间"></canvas>
         <div id="hud-overlay"></div>
       </div>
       <div id="drawer-slot"></div>
       <div id="modal-slot"></div>
-      <div id="toast-slot" class="toast-stack"></div>
-    </div>
+      <div id="toast-slot" class="toast-stack" role="status" aria-live="polite"></div>
+    </main>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

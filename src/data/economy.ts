@@ -38,19 +38,19 @@ export interface ExpansionStep {
   label: string;
 }
 
-export const FLOOR_1_INITIAL_GRIDS = 22;
-export const FLOOR_2_INITIAL_GRIDS = 22;
+export const FLOOR_1_INITIAL_GRIDS = 32;
+export const FLOOR_2_INITIAL_GRIDS = 28;
 export const FLOOR_2_UNLOCK_COST = 4500;
 
 export const FLOOR_1_EXPANSIONS: ExpansionStep[] = [
-  { floor: 1, targetGrids: 28, addedGrids: 6, cost: 800, label: '1F 首次向右扩建（22格 → 28格，+1间房）' },
-  { floor: 1, targetGrids: 36, addedGrids: 8, cost: 1800, label: '1F 二次阔气扩容（28格 → 36格，宽敞大厅）' },
-  { floor: 1, targetGrids: 44, addedGrids: 8, cost: 3200, label: '1F 终极通透大平层（36格 → 44格）' },
+  { floor: 1, targetGrids: 38, addedGrids: 6, cost: 800, label: '1F 首次向右扩建（32格 → 38格，+阳光阳台）' },
+  { floor: 1, targetGrids: 44, addedGrids: 6, cost: 1800, label: '1F 二次阔气扩容（38格 → 44格，大客厅）' },
+  { floor: 1, targetGrids: 52, addedGrids: 8, cost: 3200, label: '1F 终极通透大平层（44格 → 52格）' },
 ];
 
 export const FLOOR_2_EXPANSIONS: ExpansionStep[] = [
-  { floor: 2, targetGrids: 30, addedGrids: 8, cost: 2600, label: '2F 向右扩建（22格 → 30格）' },
-  { floor: 2, targetGrids: 38, addedGrids: 8, cost: 4200, label: '2F 终极全景露台层（30格 → 38格）' },
+  { floor: 2, targetGrids: 34, addedGrids: 6, cost: 2600, label: '2F 向右扩建（28格 → 34格）' },
+  { floor: 2, targetGrids: 42, addedGrids: 8, cost: 4200, label: '2F 终极全景露台层（34格 → 42格）' },
 ];
 
 /** Ready for Phase 3–4 integration so wages stay locked to furniture & expansion curves */

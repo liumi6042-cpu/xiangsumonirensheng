@@ -72,11 +72,14 @@ button:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 
 .scroll-arrow.left { left: 12px; }
 .scroll-arrow.right { right: 12px; }
 .bottom-info-bar { position: absolute; bottom: 14px; left: 14px; }
-.comfort-card { flex-direction: column; align-items: flex-start; gap: 1px; padding: 5px 10px; border-radius: 15px; background: #fff9eef5; font-size: 11px; font-weight: 750; }
-.comfort-row, .selection-title, .item-meta span, .role-line, .blueprint-note { display: flex; align-items: center; gap: 4px; }
+.comfort-card { flex-direction: column; align-items: flex-start; gap: 3px; padding: 6px 11px; border-radius: 15px; background: #fff9eef5; font-size: 11px; font-weight: 750; }
+.comfort-row, .selection-title, .item-meta span, .role-line, .blueprint-note, .vitals-row { display: flex; align-items: center; gap: 5px; }
 .comfort-row + .comfort-row { color: var(--muted); }
+.vitals-row { gap: 8px; }
+.vital-low { color: #b63d28; font-weight: 850; }
+.career-chip { padding: 1px 6px; border-radius: 999px; background: var(--almond); border: 1px solid #cbb18c; font-size: 10px; color: var(--muted); }
 .resident-action-bar, .selection-bar, .placement-banner { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); top: auto; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 6px; width: max-content; max-width: calc(100% - 28px); border-radius: 24px; z-index: 5; }
-.resident-action-bar { max-width: calc(100% - 210px); }
+.resident-action-bar { max-width: min(820px, calc(100% - 420px)); flex-wrap: wrap; }
 .selection-title { margin-inline: 4px; font-size: 12px; font-weight: 800; white-space: nowrap; }
 .resident-action-bar .pixel-btn, .selection-bar .pixel-btn { min-height: 29px; padding: 3px 7px; font-size: 11px; }
 .outfit-picker { max-width: 115px; height: 29px; padding-inline: 6px; border: 1.5px solid var(--ink); border-radius: 999px; background: var(--almond); font-size: 11px; cursor: pointer; }
@@ -111,18 +114,7 @@ button:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 
 .modal-heading { margin-bottom: 14px; }
 .modal-title { display: flex; align-items: center; gap: 9px; margin: 0; font-size: clamp(18px, 2.8vw, 24px); line-height: 1.3; }
 .chapter-icon { width: 36px; height: 36px; border: 1.5px solid var(--ink); background: #d7e8d8; }
-.map-print { position: relative; margin: 5px 2px 16px; padding: 5px; border: var(--edge); border-radius: 15px; background: var(--sheet); box-shadow: 0 3px 0 #c9b69a; }
-.map-print::before, .map-print::after { content: ''; position: absolute; top: -6px; width: 38px; height: 12px; background: repeating-linear-gradient(90deg,#efc87acb 0 3px,#f4d79bdb 3px 6px); transform: rotate(-13deg); left: 9%; }
-.map-print::after { left: auto; right: 9%; transform: rotate(11deg); }
-.map-print img { display: block; width: 100%; height: clamp(105px, 24vh, 205px); object-fit: cover; object-position: center 55%; border-radius: 8px; }
-.spot-grid, .roster-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.spot { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 8px; padding: 8px 10px; border: 1.5px solid #b9a58b; border-radius: 14px; background: var(--sheet); }
-.spot-icon { grid-row: span 2; width: 33px; height: 33px; background: #f5e4cd; }
-.spot:nth-child(3n) .spot-icon { background: #f4dcdc; }
-.spot:nth-child(3n + 1) .spot-icon { background: #dceada; }
-.spot b { font-size: 13px; }
-.spot-status { justify-self: start; background: transparent; padding: 0; font-weight: 500; }
-.spot.current { background: #e8f2df; border-color: #628260; }
+.roster-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .group-actions, .roster-buttons { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .group-actions { margin-bottom: 14px; }
 .roster-card { display: flex; align-items: center; gap: 9px; padding: 9px; box-shadow: 0 2px 0 #c6b295; }
@@ -173,9 +165,6 @@ button:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 
   .resident-action-bar .pixel-btn { min-width: 28px; }
   .toast-stack { top: 98px; }
   .roster-grid { grid-template-columns: 1fr; }
-  .spot { padding: 6px; gap: 4px; }
-  .spot b { font-size: 12px; }
-  .spot-icon { width: 26px; height: 26px; }
   .drawer-body { padding-inline: 8px; }
   .drawer-empty { min-width: min(290px, 85vw); }
 }

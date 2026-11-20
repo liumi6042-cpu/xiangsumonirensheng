@@ -1,8 +1,20 @@
 import { RESIDENT_DEFS, RESIDENT_DEF_MAP, type ResidentAction, type ResidentId, type ResidentOutfit, type ResidentState } from '../core/characters';
 import type { GameClock } from '../core/clock';
 import { getFloorWidthPx, getNextExpansionForFloor, getTotalAssetValue, getTotalComfortScore, getTotalUnlockedGrids, type GameSaveState, type PlacedItem } from '../core/roomState';
+import {
+  MARKET_WARES,
+  STREET_HOTSPOTS,
+  WORLD_MAP_LANDMARKS,
+  WORLD_MAP_SIZE,
+  getCareerTier,
+  getHomeApplianceActionMeta,
+  type MarketWareId,
+  type SceneMode,
+  type StreetSpotId,
+  type WorldMapLandmarkId,
+} from '../core/townLife';
 import { CATALOG_ITEMS, CATALOG_MAP, FLOOR_STYLES, WALL_STYLES, type AtlasJson, type CatalogCategory } from '../data/catalog';
-import { ECONOMY, FLOOR_2_UNLOCK_COST, calculateWeeklyBill, getSellRefund } from '../data/economy';
+import { CAREER_WAGE_TABLE, ECONOMY, FLOOR_2_UNLOCK_COST, calculateWeeklyBill, getSellRefund } from '../data/economy';
 import { iconSvg, type IconName } from './icons';
 
 export type DrawerTab = CatalogCategory | '墙纸地板' | '仓库' | '经济测试';
@@ -25,7 +37,6 @@ export interface HudCallbacks {
   onGrantTestCoins: () => void;
   onJumpTime: (hour: number) => void;
   onResetSave: () => void;
-  onShowIslandPreview: () => void;
   onSetResidentOutfit: (id: ResidentId, outfit: ResidentOutfit) => void;
   onTriggerResidentAction: (id: ResidentId, action: ResidentAction) => void;
   onToggleResidentPresence: (id: ResidentId) => void;
@@ -34,11 +45,27 @@ export interface HudCallbacks {
   onClearSelectedResident: () => void;
   onSummonAllResidents: () => void;
   onWaveAllResidents: () => void;
+  // Phase 3-4 overworld map, outdoor town & career life loop
+  onSwitchScene: (scene: SceneMode, spot?: StreetSpotId) => void;
+  onSelectStreetSpot: (spot: Exclude<StreetSpotId, 'home' | 'market'>) => void;
+  onDoStreetJob: (spot: 'cafe' | 'salon' | 'bakery') => void;
+  onDoStreetTreatOrGacha: (spot: Exclude<StreetSpotId, 'home' | 'market'>) => void;
+  onSelectMarketWare: (ware: MarketWareId) => void;
+  onSellNightMarketStall: () => void;
+  onExecuteHomeActivity: (item: PlacedItem) => void;
+  onDismissHomeActivity: () => void;
+  onPetCareVisit: () => void;
+  onEnterMapLandmark: (landmarkId: WorldMapLandmarkId) => void;
+  onHoverMapLandmark: (landmarkId: WorldMapLandmarkId | null) => void;
 }
 
 interface HudUpdate {
   state: GameSaveState;
   clock: GameClock;
+  sceneMode: SceneMode;
+  activeStreetSpot: Exclude<StreetSpotId, 'home' | 'market'>;
+  activeMarketWare: MarketWareId;
+  pendingHomeItem: PlacedItem | null;
   buildMode: boolean;
   selectedItem: PlacedItem | null;
   selectedResident: ResidentState | null;
@@ -48,13 +75,9 @@ interface HudUpdate {
   cameraX: number;
   viewW: number;
 }
-type Modal = 'island' | 'residents' | 'expansion';
+type Modal = 'residents' | 'expansion';
 const actionNames: Record<ResidentAction, string> = { idle: '发呆中', walk: '散步中', sit: '坐着休息', sleep: '熟睡中', wave: '招手中' };
 const tabs: DrawerTab[] = ['全部', '厨房餐饮', '客厅休闲', '卧室书房', '卫浴萌宠', '墙饰灯具', '桌面摆件', '墙纸地板', '仓库', '经济测试'];
-const spots: ReadonlyArray<readonly [string, IconName]> = [
-  ['我的温馨小屋', 'home'], ['海风咖啡街区', 'cup'], ['晨光面包房', 'bread'], ['美发造型沙龙', 'scissors'],
-  ['中央樱花公园', 'blossom'], ['手作杂货百货', 'store'], ['萌宠医院与商店', 'paw'], ['星光海滨夜市', 'moon'],
-];
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text?: string): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
@@ -109,7 +132,8 @@ export class GameHud {
   private readonly residentsLabel = el('span', 'compact-label');
   private readonly expand = button('扩建', 'expand', () => this.setExpansionModalOpen(true), '', '扩建', 'compact-label');
   private readonly decorate = button('', null, () => this.cb.onToggleBuildMode());
-  private readonly island = button('小岛', 'map', () => this.openModal('island'), '', '小岛导览', 'compact-label');
+  private readonly goHome = button('进小屋', 'home', () => this.cb.onSwitchScene('home'), 'gold', '进入温馨小屋', 'compact-label');
+  private readonly island = button('回地图', 'map', () => this.cb.onSwitchScene('map'), '', '返回小镇全景地图', 'compact-label');
   private readonly helpButton = button('', 'help', () => this.toggleHelp(), 'icon-only', '操作帮助');
   private readonly help = el('section', 'help-card pixel-card');
   private readonly exitPhoto = button('退出拍照预览', 'eyeOff', () => this.setPhotoMode(false), 'photo-exit');
@@ -145,13 +169,18 @@ export class GameHud {
     this.coinBadge.setAttribute('aria-describedby', this.tooltip.id);
     this.coinBadge.append(icon('coin'), this.balance, this.tooltip);
     this.residents.append(this.residentsLabel);
-    this.tools.append(this.coinBadge, this.residents, this.expand, this.decorate, this.island, this.cameraButton, this.helpButton);
+    this.tools.append(this.coinBadge, this.residents, this.expand, this.decorate, this.goHome, this.island, this.cameraButton, this.helpButton);
     this.help.id = 'house-controls';
     this.helpButton.setAttribute('aria-controls', this.help.id);
     this.helpButton.setAttribute('aria-expanded', 'false');
     const helpHeading = el('header');
-    helpHeading.append(el('h2', '', '小屋操作'), button('', 'close', () => this.toggleHelp(false), 'icon-only', '收起帮助'));
-    this.help.append(helpHeading, el('p', '', '拖动空白处浏览房间，或用 A、D 和左右方向键移动。'), el('p', '', '点选居民可招手、换装。把居民或宠物拖到椅子、沙发或床上即可休息。'), el('p', '', '点灯具或窗帘可开关。装修时点选家具可移动、换款、收起或出售。'));
+    helpHeading.append(el('h2', '', '小镇大地图与小屋玩法'), button('', 'close', () => this.toggleHelp(false), 'icon-only', '收起帮助'));
+    this.help.append(
+      helpHeading,
+      el('p', '', '在小镇全景地图上可拖拽、滚轮或用两侧箭头左右漫游，直接点击任意房子即可进入室内或街区！'),
+      el('p', '', '在小屋内点「装修住宅」自由摆放家具；点电脑/书桌接单赚钱，点床、浴缸、冰箱或沙发回复精力心情。'),
+      el('p', '', '点右上角「回地图」可随时回到大地图；每晚 18:00–02:00 东侧海滨码头开放高收益夜市出摊！')
+    );
     this.top.append(timeGroup, this.tools, this.help);
     this.dialog.setAttribute('aria-labelledby', 'house-dialog-title');
     this.dialog.oncancel = event => { event.preventDefault(); this.closeModal(); };
@@ -225,17 +254,35 @@ export class GameHud {
     this.clockBadge.replaceChildren(sticker, date, el('time', 'clock-time', clock.formattedTime), period);
   }
   public updateScrollArrowsOnly(state: GameSaveState, cameraX: number, viewW: number): void {
-    this.left.hidden = cameraX <= 4;
-    this.right.hidden = cameraX >= getFloorWidthPx(state, state.activeFloor) - viewW - 4;
+    const mode = this.current?.sceneMode ?? 'map';
+    const worldW =
+      mode === 'home'
+        ? getFloorWidthPx(state, state.activeFloor)
+        : mode === 'map'
+          ? Math.max(WORLD_MAP_SIZE.w, viewW)
+          : 960;
+    const lockArrows = mode !== 'home' && mode !== 'map' && viewW >= 960;
+    this.left.hidden = cameraX <= 4 || lockArrows;
+    this.right.hidden = cameraX >= worldW - viewW - 4 || lockArrows;
   }
   public update(params: HudUpdate): void {
-    const { state, clock, buildMode } = params;
+    const { state, clock, buildMode, sceneMode } = params;
+    const isHome = sceneMode === 'home';
+    const isMap = sceneMode === 'map';
     this.current = params;
     if (this.lastCoins !== null) this.spawnCoinDelta(state.coins - this.lastCoins);
     this.lastCoins = state.coins;
     this.tickClockDisplay(clock);
     Array.from(this.speeds.children).forEach((btn, speed) => pressed(btn as HTMLButtonElement, speed === clock.speed));
     this.renderLedger(state);
+
+    this.residents.hidden = !isHome;
+    this.expand.hidden = !isHome;
+    this.decorate.hidden = !isHome;
+    this.goHome.hidden = isHome;
+    this.goHome.replaceChildren(icon('home', 17), el('span', 'compact-label', isMap ? '进小屋' : '回小屋'));
+    this.island.hidden = isMap;
+
     const count = state.residents.filter(r => r.present).length;
     this.residentsLabel.textContent = `居民(${count})`;
     this.residents.setAttribute('aria-label', `居民名册，${count} 位在家`);
@@ -245,15 +292,38 @@ export class GameHud {
     this.decorate.setAttribute('aria-label', label);
     this.decorate.classList.toggle('gold', !buildMode);
     pressed(this.decorate, buildMode);
-    this.renderFloors(state);
+
+    this.floorSwitch.hidden = !isHome;
+    if (isHome) this.renderFloors(state);
     this.updateScrollArrowsOnly(state, params.cameraX, params.viewW);
-    this.bottom.hidden = buildMode;
-    if (!buildMode) {
+
+    this.bottom.hidden = isHome && buildMode;
+    if (!this.bottom.hidden) {
+      const tier = getCareerTier(state.careerXp);
       const sticker = el('div', 'comfort-card pixel-card');
-      sticker.title = '当前楼层面积与小屋温馨度';
-      sticker.append(marked('comfort-row', 'home', `${state.activeFloor}F • ${state.floors[state.activeFloor].gridCount}格`, 13), marked('comfort-row', 'sparkle', `+${getTotalComfortScore(state)}`, 13));
+      const topLine = el('span', 'comfort-row');
+      if (isMap) {
+        topLine.append(icon('map', 13), document.createTextNode('漫时光小岛'), el('span', 'career-chip', `Lv.${tier.level} ${tier.title}`));
+      } else if (sceneMode === 'street') {
+        topLine.append(icon('store', 13), document.createTextNode('商业街'), el('span', 'career-chip', `Lv.${tier.level} ${tier.title}`));
+      } else if (sceneMode === 'market') {
+        const sales = state.nightMarketDay === clock.day ? state.nightMarketSalesToday : 0;
+        const maxSales = CAREER_WAGE_TABLE.midFreelanceAndMarket.nightMarketMaxSalesPerNight;
+        topLine.append(icon('moon', 13), document.createTextNode('海滨夜市'), el('span', 'career-chip', `${sales}/${maxSales} 单`));
+      } else {
+        topLine.append(icon('home', 13), document.createTextNode(`${state.activeFloor}F • ${state.floors[state.activeFloor].gridCount}格`), marked('', 'sparkle', `+${getTotalComfortScore(state)}`, 13));
+      }
+
+      const vitals = el('span', 'comfort-row vitals-row');
+      const eNode = marked(state.energy < 25 ? 'vital-low' : '', 'bolt', `${Math.round(state.energy)}%`, 13);
+      eNode.title = '当前精力：打工/接单消耗，在家睡觉/泡澡/吃饭或买咖啡可恢复';
+      const mNode = marked(state.mood < 25 ? 'vital-low' : '', 'smile', `${Math.round(state.mood)}%`, 13);
+      mNode.title = '当前心情：高心情提升打工小费与夜市营收倍率';
+      vitals.append(eNode, mNode);
+      sticker.replaceChildren(topLine, vitals);
       this.bottom.replaceChildren(sticker);
     }
+
     this.renderResidentBar(params);
     this.renderItemTools(params);
     this.renderDrawer(params);
@@ -263,14 +333,21 @@ export class GameHud {
     this.balance.textContent = money(state.coins);
     this.coinBadge.setAttribute('aria-label', `小屋账本，余额 ${this.balance.textContent}`);
     const bill = calculateWeeklyBill(getTotalUnlockedGrids(state), getTotalAssetValue(state));
-    const lines = [['当天退货', '原价退回'], ['跨天出售', '原价的 65%'], ['周日 20:00 预计账单', money(bill.total)], ['小屋温馨度', `+${getTotalComfortScore(state)}`]];
+    const tier = getCareerTier(state.careerXp);
+    const lines = [
+      ['当前职级', `Lv.${tier.level} ${tier.title} (×${tier.multiplier})`],
+      ['当天退货', '原价退回'],
+      ['跨天出售', '原价的 65%'],
+      ['周日 20:00 预计账单', money(bill.total)],
+      ['小屋温馨度', `+${getTotalComfortScore(state)}`],
+    ];
     this.tooltip.replaceChildren(el('strong', '', '小屋账本'));
     for (const [label, value] of lines) {
       const line = el('div', 'ledger-line');
       line.append(el('span', '', label), el('b', '', value));
       this.tooltip.append(line);
     }
-    this.tooltip.append(el('small', 'ledger-note', `基础 ${bill.baseFee} + 面积 ${bill.gridFee} + 家电 ${bill.assetFee} G`));
+    this.tooltip.append(el('small', 'ledger-note', `基础 ${bill.baseFee} + 面积 ${bill.gridFee} + 家电 ${bill.assetFee} G${tier.nextXp ? ` · 距升级还差 ${tier.nextXp - state.careerXp} XP` : ' · 已满级'}`));
   }
   private renderFloors(state: GameSaveState): void {
     this.floorSwitch.replaceChildren();
@@ -284,7 +361,127 @@ export class GameHud {
       this.floorSwitch.append(btn);
     }
   }
-  private renderResidentBar({ state, selectedResident: resident, buildMode }: HudUpdate): void {
+  private renderResidentBar(params: HudUpdate): void {
+    const { state, clock, sceneMode, activeStreetSpot, activeMarketWare, pendingHomeItem, selectedResident: resident, buildMode } = params;
+
+    if (sceneMode === 'map') {
+      this.residentBar.hidden = false;
+      const key = `map/${clock.isNightMarketOpen}/${Math.round(state.energy)}/${state.coins}`;
+      if (this.residentKey === key) return;
+      this.residentKey = key;
+      const glyphMap: Record<WorldMapLandmarkId, IconName> = {
+        home: 'home',
+        salon: 'scissors',
+        bakery: 'bread',
+        store: 'store',
+        park: 'blossom',
+        cafe: 'cup',
+        pet: 'paw',
+        market: 'moon',
+      };
+      const shortNames: Record<WorldMapLandmarkId, string> = {
+        home: '小屋',
+        salon: '沙龙',
+        bakery: '面包房',
+        store: '扭蛋百货',
+        park: '樱花公园',
+        cafe: '咖啡馆',
+        pet: '萌宠屋',
+        market: clock.isNightMarketOpen ? '夜市(开)' : '海滨夜市',
+      };
+      const nodes: HTMLElement[] = [marked('selection-title', 'map', '点击建筑进入')];
+      for (const lm of WORLD_MAP_LANDMARKS) {
+        const b = button(shortNames[lm.id], glyphMap[lm.id], () => this.cb.onEnterMapLandmark(lm.id), lm.id === 'home' ? 'speed-btn gold' : 'speed-btn', lm.actionHint);
+        b.onmouseenter = () => this.cb.onHoverMapLandmark(lm.id);
+        b.onmouseleave = () => this.cb.onHoverMapLandmark(null);
+        nodes.push(b);
+      }
+      this.residentBar.replaceChildren(...nodes);
+      return;
+    }
+
+    if (sceneMode === 'street') {
+      this.residentBar.hidden = false;
+      const key = `street/${activeStreetSpot}/${Math.round(state.energy)}/${state.coins}`;
+      if (this.residentKey === key) return;
+      this.residentKey = key;
+      const spotBtns: Array<[Exclude<StreetSpotId, 'home' | 'market'>, IconName, string]> = [
+        ['cafe', 'cup', '咖啡馆'],
+        ['salon', 'scissors', '沙龙'],
+        ['bakery', 'bread', '面包房'],
+        ['park', 'blossom', '长椅'],
+      ];
+      const nodes: HTMLElement[] = [];
+      for (const [sid, glyph, slabel] of spotBtns) {
+        const b = button(slabel, glyph, () => this.cb.onSelectStreetSpot(sid), 'speed-btn');
+        pressed(b, sid === activeStreetSpot);
+        nodes.push(b);
+      }
+      if (activeStreetSpot === 'park') {
+        nodes.push(button('长椅小憩 (+14⚡/+20😊)', 'blossom', () => this.cb.onDoStreetTreatOrGacha('park'), 'gold'));
+      } else {
+        const meta = STREET_HOTSPOTS.find(s => s.id === activeStreetSpot)!;
+        const jobBtn = button(meta.jobTitle, 'bolt', () => this.cb.onDoStreetJob(activeStreetSpot), 'gold');
+        const sideLabel = activeStreetSpot === 'cafe' ? '买拿铁 -18G' : activeStreetSpot === 'salon' ? '抽扭蛋 -180G' : '买可颂 -12G';
+        const sideGlyph: IconName = activeStreetSpot === 'salon' ? 'gift' : activeStreetSpot === 'cafe' ? 'cup' : 'bread';
+        const sideBtn = button(sideLabel, sideGlyph, () => this.cb.onDoStreetTreatOrGacha(activeStreetSpot));
+        nodes.push(jobBtn, sideBtn);
+      }
+      this.residentBar.replaceChildren(...nodes);
+      return;
+    }
+
+    if (sceneMode === 'market') {
+      this.residentBar.hidden = false;
+      const sales = state.nightMarketDay === clock.day ? state.nightMarketSalesToday : 0;
+      const maxSales = CAREER_WAGE_TABLE.midFreelanceAndMarket.nightMarketMaxSalesPerNight;
+      const key = `market/${clock.isNightMarketOpen}/${activeMarketWare}/${sales}/${Math.round(state.energy)}`;
+      if (this.residentKey === key) return;
+      this.residentKey = key;
+      if (!clock.isNightMarketOpen) {
+        this.residentBar.replaceChildren(
+          marked('selection-title', 'moon', `夜市每晚 18:00–02:00 开摊（当前 ${clock.formattedTime}）`),
+          button('快进到 18:30 开市', 'sunset', () => this.cb.onJumpTime(18), 'gold'),
+          button('先回小屋', 'home', () => this.cb.onSwitchScene('home'))
+        );
+        return;
+      }
+      const wareBtns: HTMLElement[] = [];
+      for (const w of MARKET_WARES) {
+        const wb = button(w.name, w.id === 'coffee' ? 'cup' : w.id === 'pastry' ? 'bread' : 'gift', () => this.cb.onSelectMarketWare(w.id), 'speed-btn', w.desc);
+        pressed(wb, w.id === activeMarketWare);
+        wareBtns.push(wb);
+      }
+      const sellBtn = button(
+        sales >= maxSales ? `今日已售罄 (${sales}/${maxSales})` : `热情卖1单 (${sales}/${maxSales} · -6⚡)`,
+        'sparkle',
+        () => this.cb.onSellNightMarketStall(),
+        'gold'
+      );
+      sellBtn.disabled = sales >= maxSales;
+      this.residentBar.replaceChildren(...wareBtns, sellBtn);
+      return;
+    }
+
+    if (!buildMode && pendingHomeItem) {
+      const hasPc = state.placedItems.some(p => p.floor === state.activeFloor && p.itemId === 'desktop_pc_set');
+      const act = getHomeApplianceActionMeta(pendingHomeItem.itemId, hasPc);
+      if (act) {
+        this.residentBar.hidden = false;
+        const key = `homeact/${pendingHomeItem.uid}/${hasPc}/${state.coins}/${Math.round(state.energy)}`;
+        if (this.residentKey === key) return;
+        this.residentKey = key;
+        const glyph: IconName =
+          act.kind === 'freelance' ? 'laptop' : act.kind === 'sleep' ? 'sleep' : act.kind === 'bath' ? 'bath' : act.kind === 'meal' ? 'cup' : 'chair';
+        this.residentBar.replaceChildren(
+          marked('selection-title', glyph, `${act.title} (${act.rewardHint})`),
+          button(act.buttonText, glyph, () => this.cb.onExecuteHomeActivity(pendingHomeItem), 'gold'),
+          button('', 'close', () => this.cb.onDismissHomeActivity(), '', '关闭')
+        );
+        return;
+      }
+    }
+
     const def = resident && RESIDENT_DEF_MAP.get(resident.id);
     this.residentBar.hidden = buildMode || !resident?.present || !def;
     if (this.residentBar.hidden || !resident || !def) { this.residentKey = ''; return; }
@@ -442,7 +639,6 @@ export class GameHud {
     if (this.dialog.open) this.dialog.close();
     this.residents.classList.remove('active');
     this.expand.classList.remove('active');
-    this.island.classList.remove('active');
   }
   private renderModal(): void {
     if (!this.modal || !this.current || this.photoMode) return;
@@ -454,22 +650,20 @@ export class GameHud {
     this.modalKey = key;
     this.residents.classList.toggle('active', this.modal === 'residents');
     this.expand.classList.toggle('active', this.modal === 'expansion');
-    this.island.classList.toggle('active', this.modal === 'island');
     const scroll = this.dialog.open ? this.dialog.scrollTop : 0;
     const focused = this.dialog.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset.focusKey : undefined;
     const content = el('div', 'modal-content');
     const heading = el('header', 'modal-heading');
     const title = el('h2', 'modal-title');
     title.id = 'house-dialog-title';
-    const glyph = this.modal === 'island' ? 'map' : this.modal === 'residents' ? 'residents' : 'expand';
+    const glyph: IconName = this.modal === 'residents' ? 'residents' : 'expand';
     const sticker = el('span', 'chapter-icon');
     sticker.append(icon(glyph, 23));
-    title.append(sticker, document.createTextNode(this.modal === 'island' ? '小岛导览' : this.modal === 'residents' ? '居民与宠物名册' : '小屋扩建图纸'));
+    title.append(sticker, document.createTextNode(this.modal === 'residents' ? '居民与宠物名册' : '小屋扩建图纸'));
     const close = button('', 'close', () => this.closeModal(), 'icon-only', '关闭弹窗');
     close.dataset.focusKey = 'close';
     heading.append(title, close);
     content.append(heading);
-    if (this.modal === 'island') this.fillIsland(content);
     if (this.modal === 'residents') this.fillRoster(content, state);
     if (this.modal === 'expansion') this.fillExpansion(content, state);
     this.dialog.replaceChildren(content);
@@ -479,23 +673,6 @@ export class GameHud {
       (target ?? close).focus({ preventScroll: true });
     }
     this.dialog.scrollTop = scroll;
-  }
-  private fillIsland(content: HTMLElement): void {
-    const frame = el('figure', 'map-print');
-    const image = el('img');
-    image.src = './assets/backdrops/backdrop_street_town_day.png';
-    image.alt = '阳光下的小岛街区全景';
-    frame.append(image);
-    const grid = el('div', 'spot-grid');
-    for (const [name, glyph] of spots) {
-      const current = glyph === 'home';
-      const card = el('div', `spot${current ? ' current' : ''}`);
-      const stamp = el('span', 'spot-icon');
-      stamp.append(icon(glyph, 21));
-      card.append(stamp, el('b', '', name), el('span', 'spot-status', current ? '已入住' : '敬请期待'));
-      grid.append(card);
-    }
-    content.append(frame, grid);
   }
   private fillRoster(content: HTMLElement, state: GameSaveState): void {
     const group = el('div', 'group-actions');

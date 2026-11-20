@@ -48,6 +48,11 @@ const drawings = {
   bread: `<path d="M3 14C0 7 8 3 15 4c7 1 9 9 5 12l-13 4q-5 1-4-6Z" fill="${oak}"/><path d="m7 7 3 4m2-6 3 4m2-4 3 4"/>`,
   scissors: `<circle cx="6" cy="17" r="3.5" fill="${coral}"/><circle cx="17" cy="17" r="3.5" fill="${sky}"/><path d="m8 14 11-12m-4 12L5 2"/>`,
   blossom: `<path d="M12 7c-5-9-12-2-7 3-8 1-3 10 3 7 1 8 10 5 9-1 8 2 9-7 2-8 1-7-6-8-7-1Z" fill="#EEB7C7"/><circle cx="12" cy="12" r="2.4" fill="${honey}"/>`,
+  bolt: `<path d="M13 2 4 14h7l-1 8 10-12h-7Z" fill="${honey}"/>`,
+  smile: `<circle cx="12" cy="12" r="9" fill="${coral}"/><circle cx="9" cy="10" r="1" fill="#2B1810"/><circle cx="15" cy="10" r="1" fill="#2B1810"/><path d="M8.5 14.5q3.5 3 7 0"/>`,
+  laptop: `<rect x="4" y="5" width="16" height="10" rx="2" fill="${sky}"/><path d="M2 19h20l-2-4H4Z" fill="${oak}"/>`,
+  gift: `<rect x="3" y="8" width="18" height="13" rx="2" fill="${coral}"/><path d="M12 8v13M3 13h18" stroke="${paper}"/><path d="M12 8q-5-5-6 0t6 0q5-5 6 0t-6 0" fill="${honey}"/>`,
+  bath: `<path d="M3 12h18v2q0 5-5 5H8q-5 0-5-5Z" fill="${paper}"/><path d="M6 12V6a2.5 2.5 0 0 1 5 0M7 19l-1 2m11-2 1 2"/>`,
 } as const;
 
 export type IconName = keyof typeof drawings;

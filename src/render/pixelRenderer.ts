@@ -25,6 +25,13 @@ import {
   type WallStyleDef,
 } from '../data/catalog';
 import { GRID_SIZE, VIRTUAL_HEIGHT } from '../data/economy';
+import {
+  STREET_HOTSPOTS,
+  WORLD_MAP_LANDMARKS,
+  WORLD_MAP_SIZE,
+  type OutdoorActor,
+  type SceneMode,
+} from '../core/townLife';
 
 export interface DraggingResidentRender {
   resident: ResidentState;
@@ -35,11 +42,16 @@ export interface DraggingResidentRender {
 }
 
 export interface RenderOptions {
+  sceneMode: SceneMode;
   floor: FloorData;
   placedOnFloor: PlacedItem[];
   residentsOnFloor: ResidentState[];
+  outdoorActors: OutdoorActor[];
+  hoveredHotspotId: string | null;
   clock: GameClock;
   cameraX: number;
+  cameraY?: number;
+  mapPetBubbleTimer?: number;
   buildMode: boolean;
   selectedUid: string | null;
   selectedResidentId: ResidentId | null;
@@ -120,11 +132,58 @@ export class PixelRenderer {
     };
   }
 
+  public getOutdoorOffsetX(): number {
+    return this.viewW > 960 ? Math.round((this.viewW - 960) / 2) : 0;
+  }
+
+  public screenToOutdoor(clientX: number, clientY: number, cameraX: number): { x: number; y: number } {
+    const world = this.screenToWorld(clientX, clientY, this.viewW > 960 ? 0 : cameraX);
+    return {
+      x: world.x - this.getOutdoorOffsetX(),
+      y: world.y,
+    };
+  }
+
+  public getWorldMapDimensions(): { mapW: number; mapH: number } {
+    const mapW = Math.max(WORLD_MAP_SIZE.w, this.viewW);
+    const mapH = Math.round(mapW * (WORLD_MAP_SIZE.h / WORLD_MAP_SIZE.w));
+    return { mapW, mapH };
+  }
+
+  public screenToWorldMap(
+    clientX: number,
+    clientY: number,
+    cameraX: number,
+    cameraY: number
+  ): { x: number; y: number } {
+    const rect = this.targetCanvas.getBoundingClientRect();
+    const u = (clientX - rect.left) / Math.max(1, rect.width);
+    const v = (clientY - rect.top) / Math.max(1, rect.height);
+    const { mapW, mapH } = this.getWorldMapDimensions();
+    const camX = Math.max(0, Math.min(mapW - this.viewW, cameraX));
+    const camY = Math.max(0, Math.min(mapH - VIRTUAL_HEIGHT, cameraY));
+    return {
+      x: u * this.viewW + camX,
+      y: v * VIRTUAL_HEIGHT + camY,
+    };
+  }
+
   public render(opts: RenderOptions): void {
     this.resizeToDisplay();
+    if (opts.sceneMode === 'map') {
+      this.renderWorldMapScene(opts);
+      return;
+    }
+
     const ctx = this.bufferCtx;
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
+
+    if (opts.sceneMode === 'street' || opts.sceneMode === 'market') {
+      this.renderOutdoorScene(ctx, opts);
+      this.presentBuffer();
+      return;
+    }
 
     const camX = Math.round(opts.cameraX);
     const floorW = opts.floor.gridCount * GRID_SIZE;
@@ -229,8 +288,10 @@ export class PixelRenderer {
     this.drawLighting(ctx, camX, opts.placedOnFloor, sky);
 
     ctx.restore();
+    this.presentBuffer();
+  }
 
-    // Present smooth cartoon buffer onto full viewport canvas
+  private presentBuffer(): void {
     const tCtx = this.targetCanvas.getContext('2d')!;
     tCtx.imageSmoothingEnabled = true;
     tCtx.imageSmoothingQuality = 'high';
@@ -246,6 +307,385 @@ export class PixelRenderer {
       this.targetCanvas.width,
       this.targetCanvas.height
     );
+  }
+
+  private drawAtlasSprite(
+    ctx: CanvasRenderingContext2D,
+    itemId: string,
+    variantIdx: number,
+    cx: number,
+    bottomY: number,
+    flipped = false
+  ): void {
+    const meta = this.atlas.items[itemId];
+    const v = meta?.variants[Math.min(variantIdx, (meta?.variants.length ?? 1) - 1)] ?? meta?.variants[0];
+    if (!v) return;
+    const dx = Math.round(cx - v.w / 2);
+    const dy = Math.round(bottomY - v.h);
+    if (flipped) {
+      ctx.save();
+      ctx.translate(dx + v.w, dy);
+      ctx.scale(-1, 1);
+      ctx.drawImage(this.atlasImg, v.x, v.y, v.w, v.h, 0, 0, v.w, v.h);
+      ctx.restore();
+    } else {
+      ctx.drawImage(this.atlasImg, v.x, v.y, v.w, v.h, dx, dy, v.w, v.h);
+    }
+  }
+
+  private drawOutdoorActors(
+    ctx: CanvasRenderingContext2D,
+    actors: OutdoorActor[],
+    elapsedSec: number
+  ): void {
+    const sorted = [...actors].sort((a, b) => a.y - b.y);
+    for (const a of sorted) {
+      let spriteKey = a.staticSprite;
+      let bobY = 0;
+      const walking = a.speed > 0 && a.pauseTimer <= 0;
+      if (walking) {
+        if (a.hasWalkFrames) {
+          spriteKey = Math.floor(a.walkPhase) % 2 === 0 ? `${a.spritePrefix}_walk_1` : `${a.spritePrefix}_walk_2`;
+          bobY = -Math.abs(Math.sin(a.walkPhase * Math.PI)) * 1.6;
+        } else {
+          bobY = -Math.abs(Math.sin(a.walkPhase * Math.PI)) * 3.0;
+        }
+      }
+      const rect = this.atlas.characters?.[spriteKey] ?? this.atlas.characters?.[a.staticSprite];
+      if (!rect) continue;
+
+      this.drawFloorContactShadow(ctx, a.x - (rect.w - 8) / 2, a.y, rect.w - 8);
+      const dx = Math.round(a.x - rect.w / 2);
+      const dy = Math.round(a.y + bobY - rect.h);
+      ctx.save();
+      if (a.facing === 'left') {
+        ctx.translate(dx + rect.w, dy);
+        ctx.scale(-1, 1);
+        ctx.drawImage(this.atlasImg, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
+      } else {
+        ctx.drawImage(this.atlasImg, rect.x, rect.y, rect.w, rect.h, dx, dy, rect.w, rect.h);
+      }
+      ctx.restore();
+
+      if (a.emoteText && a.emoteTimer > 0) {
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, a.emoteTimer * 1.4);
+        const bx = Math.round(a.x);
+        const by = dy - 16 - Math.sin(elapsedSec * 3.4) * 2;
+        ctx.fillStyle = 'rgba(255, 250, 240, 0.96)';
+        ctx.strokeStyle = '#2b1810';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(bx - 14, by - 14, 28, 22, 9);
+        ctx.fill();
+        ctx.stroke();
+        ctx.font = '13px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#2b1810';
+        ctx.fillText(a.emoteText, bx, by - 2);
+        ctx.restore();
+      }
+    }
+  }
+
+  private renderWorldMapScene(opts: RenderOptions): void {
+    const tCtx = this.targetCanvas.getContext('2d')!;
+    tCtx.imageSmoothingEnabled = true;
+    tCtx.imageSmoothingQuality = 'high';
+
+    const { mapW, mapH } = this.getWorldMapDimensions();
+    const camX = Math.max(0, Math.min(mapW - this.viewW, opts.cameraX));
+    const camY = Math.max(0, Math.min(mapH - VIRTUAL_HEIGHT, opts.cameraY ?? 120));
+    const sx = this.targetCanvas.width / Math.max(1, this.viewW);
+    const sy = this.targetCanvas.height / VIRTUAL_HEIGHT;
+
+    tCtx.save();
+    tCtx.fillStyle = '#B8E4FA';
+    tCtx.fillRect(0, 0, this.targetCanvas.width, this.targetCanvas.height);
+    tCtx.scale(sx, sy);
+    tCtx.translate(-camX, -camY);
+
+    const mapImg = this.surfaceImages.get('./assets/backdrops/island_world_map.png');
+    if (mapImg && mapImg.complete && mapImg.naturalWidth > 0) {
+      tCtx.drawImage(mapImg, 0, 0, mapW, mapH);
+    }
+
+    const hour = opts.clock.hour + opts.clock.minute / 60;
+    const isSunset = hour >= 16.5 && hour < 18.8;
+    const isNight = hour >= 18.8 || hour < 5.8;
+
+    if (isSunset) {
+      tCtx.fillStyle = 'rgba(255, 162, 92, 0.16)';
+      tCtx.fillRect(0, 0, mapW, mapH);
+    } else if (isNight) {
+      tCtx.fillStyle = 'rgba(25, 34, 82, 0.34)';
+      tCtx.fillRect(0, 0, mapW, mapH);
+
+      // Warm evening lanterns & lit shop windows across town buildings
+      const glows: Array<{ x: number; y: number; r: number }> = [
+        { x: 0.14 * mapW, y: 0.31 * mapH, r: 95 },
+        { x: 0.125 * mapW, y: 0.74 * mapH, r: 95 },
+        { x: 0.35 * mapW, y: 0.28 * mapH, r: 95 },
+        { x: 0.355 * mapW, y: 0.75 * mapH, r: 95 },
+        { x: 0.705 * mapW, y: 0.29 * mapH, r: 120 },
+        { x: 0.66 * mapW, y: 0.74 * mapH, r: 100 },
+        { x: 0.85 * mapW, y: 0.56 * mapH, r: 145 },
+      ];
+      tCtx.save();
+      tCtx.globalCompositeOperation = 'lighter';
+      for (const g of glows) {
+        const grad = tCtx.createRadialGradient(g.x, g.y, 8, g.x, g.y, g.r);
+        grad.addColorStop(0, 'rgba(255, 212, 118, 0.52)');
+        grad.addColorStop(0.55, 'rgba(255, 178, 78, 0.20)');
+        grad.addColorStop(1, 'rgba(255, 178, 78, 0)');
+        tCtx.fillStyle = grad;
+        tCtx.beginPath();
+        tCtx.arc(g.x, g.y, g.r, 0, Math.PI * 2);
+        tCtx.fill();
+      }
+      tCtx.restore();
+    }
+
+    // Highlight hovered building & draw crisp stationery pin pills on every landmark
+    tCtx.textBaseline = 'middle';
+    for (const lm of WORLD_MAP_LANDMARKS) {
+      const hovered = opts.hoveredHotspotId === lm.id;
+      if (hovered) {
+        const bx = lm.nx * mapW;
+        const by = lm.ny * mapH;
+        const bw = lm.nw * mapW;
+        const bh = lm.nh * mapH;
+        tCtx.save();
+        tCtx.fillStyle = 'rgba(255, 224, 130, 0.18)';
+        tCtx.strokeStyle = '#FFD54F';
+        tCtx.lineWidth = 3.2;
+        tCtx.beginPath();
+        tCtx.roundRect(bx, by, bw, bh, 22);
+        tCtx.fill();
+        tCtx.stroke();
+        tCtx.restore();
+      }
+
+      const px = lm.pinX * mapW;
+      const py = lm.pinY * mapH - (hovered ? 3 : 0);
+      const isMarketHot = lm.id === 'market' && opts.clock.isNightMarketOpen;
+      const tagText = lm.id === 'market' ? (opts.clock.isNightMarketOpen ? '开市中' : '18:00') : lm.tag;
+
+      tCtx.save();
+      tCtx.font = '800 11px "Nunito", "PingFang SC", "Microsoft YaHei", sans-serif';
+      const nameW = tCtx.measureText(lm.name).width;
+      tCtx.font = '800 9.5px "Nunito", "PingFang SC", "Microsoft YaHei", sans-serif';
+      const tagW = tCtx.measureText(tagText).width + 10;
+
+      const pillH = 24;
+      const pillW = Math.round(24 + nameW + 7 + tagW + 8);
+      const left = Math.round(px - pillW / 2);
+      const top = Math.round(py - pillH / 2);
+
+      // Soft offset lip
+      tCtx.fillStyle = 'rgba(43, 24, 16, 0.25)';
+      tCtx.beginPath();
+      tCtx.roundRect(left, top + 2.5, pillW, pillH, 999);
+      tCtx.fill();
+
+      // Main card pill
+      tCtx.fillStyle = hovered ? '#FFF0BA' : isMarketHot ? '#FFE4C4' : 'rgba(255, 250, 238, 0.96)';
+      tCtx.strokeStyle = hovered ? '#8F4E18' : '#2B1810';
+      tCtx.lineWidth = hovered ? 2.2 : 1.7;
+      tCtx.beginPath();
+      tCtx.roundRect(left, top, pillW, pillH, 999);
+      tCtx.fill();
+      tCtx.stroke();
+
+      // Accent dot
+      tCtx.fillStyle = lm.accentColor;
+      tCtx.strokeStyle = '#2B1810';
+      tCtx.lineWidth = 1.2;
+      tCtx.beginPath();
+      tCtx.arc(left + 12, top + pillH / 2, 6, 0, Math.PI * 2);
+      tCtx.fill();
+      tCtx.stroke();
+
+      // Landmark title
+      tCtx.font = '800 11px "Nunito", "PingFang SC", "Microsoft YaHei", sans-serif';
+      tCtx.textAlign = 'left';
+      tCtx.fillStyle = '#2B1810';
+      tCtx.fillText(lm.name, left + 22, top + pillH / 2 + 0.5);
+
+      // Tag badge
+      const tagLeft = left + 22 + nameW + 5;
+      tCtx.fillStyle = lm.accentColor;
+      tCtx.beginPath();
+      tCtx.roundRect(tagLeft, top + 4, tagW, pillH - 8, 999);
+      tCtx.fill();
+      tCtx.font = '800 9.5px "Nunito", "PingFang SC", "Microsoft YaHei", sans-serif';
+      tCtx.textAlign = 'center';
+      tCtx.fillStyle = '#FFFDF8';
+      tCtx.fillText(tagText, tagLeft + tagW / 2, top + pillH / 2 + 0.5);
+      tCtx.restore();
+    }
+
+    if ((opts.mapPetBubbleTimer ?? 0) > 0) {
+      const bx = 0.605 * mapW;
+      const by = 0.72 * mapH - Math.sin(opts.elapsedSec * 4) * 3;
+      tCtx.save();
+      tCtx.fillStyle = '#FFF9EE';
+      tCtx.strokeStyle = '#2B1810';
+      tCtx.lineWidth = 2;
+      tCtx.beginPath();
+      tCtx.roundRect(bx - 42, by - 14, 84, 24, 12);
+      tCtx.fill();
+      tCtx.stroke();
+      tCtx.font = '800 11px "Nunito", "Microsoft YaHei", sans-serif';
+      tCtx.textAlign = 'center';
+      tCtx.fillStyle = '#2B1810';
+      tCtx.fillText('🐶 心情大好!', bx, by - 2);
+      tCtx.restore();
+    }
+
+    tCtx.restore();
+  }
+
+  private renderOutdoorScene(ctx: CanvasRenderingContext2D, opts: RenderOptions): void {
+    const sky = opts.clock.getSkyPalette();
+    const isMarket = opts.sceneMode === 'market';
+    const offsetX = this.getOutdoorOffsetX();
+    const camX = offsetX > 0 ? 0 : Math.max(0, Math.min(960 - this.viewW, Math.round(opts.cameraX)));
+
+    let bgUrl = './assets/backdrops/backdrop_street_town_day.png';
+    if (isMarket) {
+      bgUrl =
+        opts.clock.hour >= 16 && opts.clock.hour < 19
+          ? './assets/backdrops/backdrop_sunset_balcony.png'
+          : './assets/backdrops/backdrop_night_starry_town.png';
+    }
+    const bgImg = this.surfaceImages.get(bgUrl);
+
+    ctx.fillStyle = isMarket ? '#1b2442' : '#9ed4fa';
+    ctx.fillRect(0, 0, this.viewW, VIRTUAL_HEIGHT);
+
+    ctx.save();
+    ctx.translate(offsetX - camX, 0);
+
+    if (bgImg && bgImg.complete && bgImg.naturalWidth > 0) {
+      // Extend seamless outer 4px edge bands smoothly across ultrawide screens
+      if (offsetX > 0) {
+        ctx.drawImage(bgImg, 0, 0, 4, 540, -offsetX, 0, offsetX + 2, 540);
+        ctx.drawImage(bgImg, 956, 0, 4, 540, 958, 0, offsetX + 2, 540);
+      }
+      ctx.drawImage(bgImg, 0, 0, 960, 540);
+    }
+
+    const lampPosts: Array<{ x: number; y: number; r: number }> = [];
+
+    if (!isMarket) {
+      // Sidewalk & bench props matching Wave 2 street layout
+      this.drawAtlasSprite(ctx, 'street_bush_flowers', 0, 344, 444);
+      this.drawAtlasSprite(ctx, 'street_bench', 0, 476, 446);
+      this.drawAtlasSprite(ctx, 'street_lamp_post', opts.clock.hour >= 18 || opts.clock.hour < 6 ? 0 : 1, 36, 444);
+      this.drawAtlasSprite(ctx, 'street_lamp_post', opts.clock.hour >= 18 || opts.clock.hour < 6 ? 0 : 1, 628, 444);
+      if (opts.clock.hour >= 18 || opts.clock.hour < 6) {
+        lampPosts.push({ x: 36, y: 266, r: 220 }, { x: 628, y: 266, r: 220 });
+      }
+
+      // Highlight hovered clickable storefront card cleanly
+      for (const spot of STREET_HOTSPOTS) {
+        const hovered = opts.hoveredHotspotId === spot.id;
+        if (hovered) {
+          ctx.save();
+          ctx.strokeStyle = '#ffd54f';
+          ctx.fillStyle = 'rgba(255, 224, 130, 0.14)';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.roundRect(spot.x, spot.y, spot.w, spot.h, 14);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = '#fff9ee';
+          ctx.strokeStyle = '#2b1810';
+          ctx.lineWidth = 2;
+          const bw = 156;
+          const bx = spot.x + spot.w / 2 - bw / 2;
+          const by = spot.y - 26;
+          ctx.beginPath();
+          ctx.roundRect(bx, by, bw, 24, 12);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = '#2b1810';
+          ctx.font = 'bold 12px "Microsoft YaHei", sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(`点击进入 · ${spot.name}`, spot.x + spot.w / 2, by + 12);
+          ctx.restore();
+        }
+      }
+    } else {
+      // Seaside Starlight Night Market Pier Deck (`y=380..540`)
+      const deckFloor = this.surfaceImages.get('./assets/surfaces/floor_honey_oak.png');
+      for (let x = -offsetX; x < 960 + offsetX; x += 120) {
+        if (deckFloor && deckFloor.complete && deckFloor.naturalWidth > 0) {
+          ctx.drawImage(deckFloor, 0, 0, 120, 160, x, 380, 120, 160);
+        } else {
+          ctx.fillStyle = '#c98d56';
+          ctx.fillRect(x, 380, 120, 160);
+        }
+      }
+      ctx.fillStyle = '#2b1810';
+      ctx.fillRect(-offsetX, 378, 960 + offsetX * 2, 3);
+
+      // String light seaside railing along pier edge
+      const railIdx = opts.clock.isNightMarketOpen ? 0 : 1;
+      for (let x = 160; x <= 960; x += 384) {
+        this.drawAtlasSprite(ctx, 'balcony_railing_lights', railIdx, x, 382);
+      }
+
+      this.drawAtlasSprite(ctx, 'street_lamp_post', railIdx, 195, 424);
+      this.drawAtlasSprite(ctx, 'street_lamp_post', railIdx, 745, 424);
+      this.drawAtlasSprite(ctx, 'street_bench', 0, 792, 444);
+      this.drawAtlasSprite(ctx, 'street_bush_flowers', 0, 118, 434);
+
+      // Market hero stall counter + festive wares on tabletop
+      this.drawFloorContactShadow(ctx, 355, 466, 162);
+      this.drawAtlasSprite(ctx, 'kitchen_island_counter', 0, 436, 466);
+      this.drawAtlasSprite(ctx, 'coffee_mug_steaming', 2, 382, 396);
+      this.drawAtlasSprite(ctx, 'strawberry_cake', 0, 436, 398);
+      this.drawAtlasSprite(ctx, 'plate_omurice', 0, 488, 392);
+
+      if (opts.clock.isNightMarketOpen) {
+        lampPosts.push(
+          { x: 195, y: 244, r: 240 },
+          { x: 436, y: 340, r: 230 },
+          { x: 745, y: 244, r: 240 }
+        );
+      }
+    }
+
+    // Outdoor live animated actors + Shiba puppy
+    this.drawOutdoorActors(ctx, opts.outdoorActors, opts.elapsedSec);
+
+    // Dusk/Night atmospheric overlay & warm lamp glow pools
+    if (sky.ambientDarkness > 0.04) {
+      ctx.fillStyle = `rgba(18, 24, 52, ${(sky.ambientDarkness * (isMarket ? 0.55 : 0.65)).toFixed(3)})`;
+      ctx.fillRect(-offsetX, 0, 960 + offsetX * 2, VIRTUAL_HEIGHT);
+    }
+    if (lampPosts.length > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (const lp of lampPosts) {
+        const g = ctx.createRadialGradient(lp.x, lp.y, 10, lp.x, lp.y, lp.r);
+        g.addColorStop(0, 'rgba(255, 224, 134, 0.48)');
+        g.addColorStop(0.55, 'rgba(255, 180, 88, 0.20)');
+        g.addColorStop(1, 'rgba(255, 180, 88, 0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(lp.x, lp.y, lp.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    ctx.restore();
   }
 
   private drawItemsAndResidentsYSorted(

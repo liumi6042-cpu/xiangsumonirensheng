@@ -29,14 +29,37 @@ import {
   getFloorWidthPx,
   getNextExpansionForFloor,
   getTotalAssetValue,
+  getTotalComfortScore,
   getTotalUnlockedGrids,
   loadSaveState,
   persistSaveState,
   type GameSaveState,
   type PlacedItem,
 } from './core/roomState';
+import {
+  MARKET_WARES,
+  STREET_HOTSPOTS,
+  WORLD_MAP_LANDMARKS,
+  clampVital,
+  computeEntryJobPay,
+  computeFreelanceOrderPay,
+  computeHomeRecoveryBonus,
+  computeNightMarketSale,
+  createMarketActors,
+  createStreetActors,
+  getCareerTier,
+  getHomeApplianceActionMeta,
+  pullGachaItem,
+  updateOutdoorActors,
+  type MarketWareId,
+  type OutdoorActor,
+  type SceneMode,
+  type StreetSpotId,
+  type WorldMapLandmark,
+  type WorldMapLandmarkId,
+} from './core/townLife';
 import { CATALOG_MAP, FLOOR_STYLES, WALL_STYLES, type AtlasJson } from './data/catalog';
-import { ECONOMY, GRID_SIZE, calculateWeeklyBill, getSellRefund } from './data/economy';
+import { CAREER_WAGE_TABLE, ECONOMY, GRID_SIZE, VIRTUAL_HEIGHT, calculateWeeklyBill, getSellRefund } from './data/economy';
 import { PixelRenderer } from './render/pixelRenderer';
 import { GameHud } from './ui/hud';
 
@@ -53,6 +76,10 @@ async function loadSurfaceTextures(): Promise<Map<string, HTMLImageElement>> {
   const urls = new Set<string>();
   for (const w of WALL_STYLES) urls.add(w.textureUrl);
   for (const f of FLOOR_STYLES) urls.add(f.textureUrl);
+  urls.add('./assets/backdrops/backdrop_street_town_day.png');
+  urls.add('./assets/backdrops/backdrop_sunset_balcony.png');
+  urls.add('./assets/backdrops/backdrop_night_starry_town.png');
+  urls.add('./assets/backdrops/island_world_map.png');
 
   const entries = await Promise.all(
     Array.from(urls).map(async (url) => {
@@ -93,9 +120,21 @@ async function bootstrap(): Promise<void> {
   renderer.resizeToDisplay();
 
   let buildMode = false;
-  let cameraX = 0;
+  let cameraX = 40;
+  let cameraY = 125;
   let selectedUid: string | null = null;
   let selectedResidentId: ResidentId | null = null;
+
+  // Phase 3-4 overworld-first world map, outdoor towns & daily life loop
+  let sceneMode: SceneMode = 'map';
+  let lastMapCam = { x: 40, y: 125 };
+  let mapPetBubbleTimer = 0;
+  let activeStreetSpot: Exclude<StreetSpotId, 'home' | 'market'> = 'cafe';
+  let activeMarketWare: MarketWareId = 'coffee';
+  let pendingHomeItem: PlacedItem | null = null;
+  let hoveredHotspotId: string | null = null;
+  let streetActors: OutdoorActor[] = createStreetActors();
+  let marketActors: OutdoorActor[] = createMarketActors();
 
   let placingMode:
     | { kind: 'new'; itemId: string; variant: number; flipped: boolean }
@@ -128,7 +167,9 @@ async function bootstrap(): Promise<void> {
   let isPanning = false;
   let panMoved = false;
   let panStartClientX = 0;
+  let panStartClientY = 0;
   let panStartCamX = 0;
+  let panStartCamY = 0;
   const pressedKeys = new Set<string>();
 
   let draggingRes: {
@@ -144,9 +185,43 @@ async function bootstrap(): Promise<void> {
 
   const clampCamera = (): void => {
     const { viewW } = renderer.getViewDimensions();
+    if (sceneMode === 'map') {
+      const { mapW, mapH } = renderer.getWorldMapDimensions();
+      cameraX = Math.max(0, Math.min(Math.max(0, mapW - viewW), cameraX));
+      cameraY = Math.max(0, Math.min(Math.max(0, mapH - VIRTUAL_HEIGHT), cameraY));
+      return;
+    }
+    cameraY = 0;
+    if (sceneMode !== 'home') {
+      const maxCam = Math.max(0, 960 - viewW);
+      cameraX = Math.max(0, Math.min(maxCam, cameraX));
+      return;
+    }
     const floorW = getFloorWidthPx(state, state.activeFloor);
     const maxCam = Math.max(0, floorW - viewW);
     cameraX = Math.max(0, Math.min(maxCam, cameraX));
+  };
+
+  const hitTestMapLandmark = (mapX: number, mapY: number): WorldMapLandmark | null => {
+    const { mapW, mapH } = renderer.getWorldMapDimensions();
+    // Check pin pills first for pinpoint accuracy, then building boxes
+    for (const lm of WORLD_MAP_LANDMARKS) {
+      const px = lm.pinX * mapW;
+      const py = lm.pinY * mapH;
+      if (Math.abs(mapX - px) <= 64 && Math.abs(mapY - py) <= 16) {
+        return lm;
+      }
+    }
+    for (const lm of WORLD_MAP_LANDMARKS) {
+      const bx = lm.nx * mapW;
+      const by = lm.ny * mapH;
+      const bw = lm.nw * mapW;
+      const bh = lm.nh * mapH;
+      if (mapX >= bx && mapX <= bx + bw && mapY >= by && mapY <= by + bh) {
+        return lm;
+      }
+    }
+    return null;
   };
 
   const getFloorItems = (): PlacedItem[] =>
@@ -160,6 +235,49 @@ async function bootstrap(): Promise<void> {
     state.minuteOfDay = clock.minuteOfDay;
     state.lastSundayBillDay = clock.getLastSundayBillDay();
     persistSaveState(state);
+  };
+
+  const handleClockEvents = (dayChanged: boolean, triggerSundayBill: boolean): boolean => {
+    let dirty = dayChanged;
+    if (clock.day !== state.nightMarketDay) {
+      state.nightMarketDay = clock.day;
+      state.nightMarketSalesToday = 0;
+      dirty = true;
+    }
+    if (triggerSundayBill) {
+      const bill = calculateWeeklyBill(getTotalUnlockedGrids(state), getTotalAssetValue(state));
+      state.coins = Math.max(0, state.coins - bill.total);
+      hud.pushToast(`📬 周日物业水电账单结算：-${bill.total} G`, 'warn');
+      dirty = true;
+    }
+    return dirty;
+  };
+
+  const advanceClockAndBills = (minutes: number): void => {
+    const { dayChanged, triggerSundayBill } = clock.advanceMinutes(minutes);
+    handleClockEvents(dayChanged, triggerSundayBill);
+  };
+
+  const maybeNotifyPromotion = (prevLevel: number, nextXp: number): void => {
+    const tier = getCareerTier(nextXp);
+    if (tier.level > prevLevel) {
+      hud.pushToast(`🎉 职业晋升为「Lv.${tier.level} ${tier.title}」！收益倍率 ${tier.multiplier}x`, 'good');
+    }
+  };
+
+  const focusStreetActorOnSpot = (spot: Exclude<StreetSpotId, 'home' | 'market'>): void => {
+    const hero = streetActors[0];
+    const hs = STREET_HOTSPOTS.find((h) => h.id === spot);
+    const targetX = hs ? hs.standX : 510;
+    if (hero) {
+      hero.x = targetX;
+      hero.pauseTimer = 3.2;
+      hero.emoteText = spot === 'cafe' ? '☕' : spot === 'salon' ? '✨' : spot === 'bakery' ? '🥐' : '🌿';
+      hero.emoteTimer = 2.6;
+    }
+    const { viewW } = renderer.getViewDimensions();
+    cameraX = targetX - viewW * 0.5;
+    clampCamera();
   };
 
   const shiftChildren = (parentUid: string, dx: number, dy: number): void => {
@@ -197,6 +315,11 @@ async function bootstrap(): Promise<void> {
     },
     onToggleBuildMode: () => {
       buildMode = !buildMode;
+      pendingHomeItem = null;
+      if (buildMode && sceneMode !== 'home') {
+        sceneMode = 'home';
+        cameraX = 0;
+      }
       if (!buildMode) {
         cancelActiveTool();
         selectedUid = null;
@@ -214,8 +337,10 @@ async function bootstrap(): Promise<void> {
     onSelectFloor: (floor) => {
       if (!state.floors[floor].unlocked) return;
       cancelActiveTool();
+      sceneMode = 'home';
       selectedUid = null;
       selectedResidentId = null;
+      pendingHomeItem = null;
       state.activeFloor = floor;
       cameraX = 0;
       clampCamera();
@@ -429,6 +554,10 @@ async function bootstrap(): Promise<void> {
     },
     onJumpTime: (hour) => {
       const dayChanged = clock.skipToNextEveningOrMorning(hour);
+      if (clock.day !== state.nightMarketDay) {
+        state.nightMarketDay = clock.day;
+        state.nightMarketSalesToday = 0;
+      }
       save();
       hud.pushToast(
         dayChanged
@@ -442,18 +571,22 @@ async function bootstrap(): Promise<void> {
       state = clearSaveState();
       clock.day = state.day;
       clock.minuteOfDay = state.minuteOfDay;
+      sceneMode = 'map';
+      lastMapCam = { x: 40, y: 125 };
+      activeStreetSpot = 'cafe';
+      activeMarketWare = 'coffee';
+      pendingHomeItem = null;
+      hoveredHotspotId = null;
+      streetActors = createStreetActors();
+      marketActors = createMarketActors();
       selectedUid = null;
       selectedResidentId = null;
       cancelActiveTool();
-      cameraX = 0;
-      hud.pushToast('已恢复初始温馨小屋、原创角色与 1,200 G 启动资金', 'good');
+      cameraX = 40;
+      cameraY = 125;
+      clampCamera();
+      hud.pushToast('已恢复初始小镇、原创角色与 1,200 G 启动资金', 'good');
       syncHud();
-    },
-    onShowIslandPreview: () => {
-      hud.pushToast(
-        '🗺️ 小镇室外咖啡街景、公园等 8 大地点地图将在 Phase 3-4 逐步连通！',
-        'normal'
-      );
     },
     // Phase 2 resident controls
     onSetResidentOutfit: (id, outfit) => {
@@ -568,7 +701,315 @@ async function bootstrap(): Promise<void> {
       save();
       syncHud();
     },
+    // Phase 3-4 outdoor scenes & life loop
+    onSwitchScene: (scene, spot) => {
+      switchScene(scene, spot);
+    },
+    onSelectStreetSpot: (spot) => {
+      activeStreetSpot = spot;
+      focusStreetActorOnSpot(spot);
+      syncHud();
+    },
+    onDoStreetJob: (spot) => {
+      const energyCost = 24;
+      if (state.energy < energyCost) {
+        hud.pushToast(`⚡ 精力不足（需 ${energyCost} 点），先歇息或吃点甜品再打工吧`, 'warn');
+        return;
+      }
+      const prevLevel = getCareerTier(state.careerXp).level;
+      const { base, tip, total } = computeEntryJobPay(state.careerXp, state.mood);
+      state.coins += total;
+      state.energy = clampVital(state.energy - energyCost);
+      state.mood = clampVital(state.mood - 6);
+      state.careerXp += 18;
+      advanceClockAndBills(120);
+
+      const hero = streetActors[0];
+      if (hero) {
+        hero.emoteText = '💰';
+        hero.emoteTimer = 2.6;
+      }
+      const shopName = STREET_HOTSPOTS.find((h) => h.id === spot)?.name ?? '街区店铺';
+      hud.pushToast(`${shopName} 兼职完成：底薪 +${base}G + 小费 +${tip}G = +${total} G`, 'good');
+      maybeNotifyPromotion(prevLevel, state.careerXp);
+      save();
+      syncHud();
+    },
+    onDoStreetTreatOrGacha: (spot) => {
+      if (spot === 'cafe') {
+        if (state.coins < ECONOMY.coffeePrice) {
+          hud.pushToast(`金币不足！海风拿铁需要 ${ECONOMY.coffeePrice} G`, 'warn');
+          return;
+        }
+        state.coins -= ECONOMY.coffeePrice;
+        state.energy = clampVital(state.energy + 18);
+        state.mood = clampVital(state.mood + 22);
+        advanceClockAndBills(25);
+        hud.pushToast(`☕ 享用现磨海风拿铁 (-${ECONOMY.coffeePrice}G)：精力 +18 · 心情 +22`, 'good');
+      } else if (spot === 'bakery') {
+        const cost = 12;
+        if (state.coins < cost) {
+          hud.pushToast(`金币不足！黄油可颂需要 ${cost} G`, 'warn');
+          return;
+        }
+        state.coins -= cost;
+        state.energy = clampVital(state.energy + 26);
+        state.mood = clampVital(state.mood + 16);
+        advanceClockAndBills(25);
+        hud.pushToast(`🥐 享用黄油可颂 (-${cost}G)：精力 +26 · 心情 +16`, 'good');
+      } else if (spot === 'park') {
+        state.energy = clampVital(state.energy + 14);
+        state.mood = clampVital(state.mood + 20);
+        advanceClockAndBills(30);
+        hud.pushToast('🌿 在街心长椅晒太阳撸柴犬：精力 +14 · 心情 +20', 'good');
+      } else {
+        if (state.coins < ECONOMY.gachaPullPrice) {
+          hud.pushToast(`金币不足！惊喜扭蛋需要 ${ECONOMY.gachaPullPrice} G`, 'warn');
+          return;
+        }
+        const pulled = pullGachaItem(state, atlas, clock.day);
+        if (!pulled) {
+          hud.pushToast('扭蛋机补货中，稍后再来', 'warn');
+          return;
+        }
+        state.coins -= ECONOMY.gachaPullPrice;
+        state.mood = clampVital(state.mood + 18);
+        advanceClockAndBills(15);
+        const hero = streetActors[0];
+        if (hero) {
+          hero.emoteText = '🎁';
+          hero.emoteTimer = 3.0;
+        }
+        hud.pushToast(`🎁 扭蛋开出 [${pulled.tier}]「${pulled.itemName}」！已放进装修仓库`, 'good');
+      }
+      save();
+      syncHud();
+    },
+    onSelectMarketWare: (ware) => {
+      activeMarketWare = ware;
+      syncHud();
+    },
+    onSellNightMarketStall: () => {
+      if (clock.day !== state.nightMarketDay) {
+        state.nightMarketDay = clock.day;
+        state.nightMarketSalesToday = 0;
+      }
+      if (!clock.isNightMarketOpen) {
+        hud.pushToast('🌙 星光夜市 18:00–02:00 营业，请先将时间切换至傍晚', 'warn');
+        return;
+      }
+      const maxSales = CAREER_WAGE_TABLE.midFreelanceAndMarket.nightMarketMaxSalesPerNight;
+      if (state.nightMarketSalesToday >= maxSales) {
+        hud.pushToast(`今日夜市已售罄（${maxSales}/${maxSales} 单），明晚 18:00 再来吧！`, 'warn');
+        return;
+      }
+      const energyCost = 6;
+      if (state.energy < energyCost) {
+        hud.pushToast(`⚡ 精力不足（需 ${energyCost} 点），先休息回复体力再来摆摊`, 'warn');
+        return;
+      }
+      const ware = MARKET_WARES.find((w) => w.id === activeMarketWare) ?? MARKET_WARES[0];
+      const prevLevel = getCareerTier(state.careerXp).level;
+      const { revenue, mult } = computeNightMarketSale(ware, state.careerXp, state.mood);
+      state.coins += revenue;
+      state.energy = clampVital(state.energy - energyCost);
+      state.mood = clampVital(state.mood + 3);
+      state.careerXp += 10;
+      state.nightMarketSalesToday += 1;
+      advanceClockAndBills(25);
+
+      const hero = marketActors[0];
+      if (hero) {
+        hero.emoteText = '🏮';
+        hero.emoteTimer = 2.6;
+      }
+      hud.pushToast(
+        `🏮 夜市第 ${state.nightMarketSalesToday}/${maxSales} 单成交！「${ware.name}」(${mult}x) +${revenue} G`,
+        'good'
+      );
+      maybeNotifyPromotion(prevLevel, state.careerXp);
+      save();
+      syncHud();
+    },
+    onExecuteHomeActivity: (item) => {
+      const hasComputer = state.placedItems.some(
+        (p) => p.floor === item.floor && p.itemId === 'desktop_pc_set'
+      );
+      const act = getHomeApplianceActionMeta(item.itemId, hasComputer);
+      if (!act) {
+        pendingHomeItem = null;
+        syncHud();
+        return;
+      }
+      if (act.energyDelta < 0 && state.energy < Math.abs(act.energyDelta)) {
+        hud.pushToast(`⚡ 精力不足（需 ${Math.abs(act.energyDelta)} 点），先吃饭或上床补觉吧`, 'warn');
+        return;
+      }
+      if (act.costCoins > 0 && state.coins < act.costCoins) {
+        hud.pushToast(`金币不足！需要 ${act.costCoins} G`, 'warn');
+        return;
+      }
+
+      const comfort = getTotalComfortScore(state);
+      if (act.kind === 'freelance') {
+        const useComputer = hasComputer || item.itemId === 'desktop_pc_set';
+        const prevLevel = getCareerTier(state.careerXp).level;
+        const earn = computeFreelanceOrderPay(useComputer, state.careerXp, comfort);
+        state.coins += earn;
+        state.energy = clampVital(state.energy + act.energyDelta);
+        state.mood = clampVital(state.mood + act.moodDelta);
+        state.careerXp += useComputer ? 24 : 12;
+        advanceClockAndBills(act.minutes);
+        hud.pushToast(
+          useComputer
+            ? `💻 居家外包交付完成：+${earn} G（含舒适度与职级加成）`
+            : `📝 手账整理零工完成：+${earn} G`,
+          'good'
+        );
+        maybeNotifyPromotion(prevLevel, state.careerXp);
+      } else {
+        const comfortBonus = computeHomeRecoveryBonus(comfort);
+        const eGain = act.energyDelta + comfortBonus;
+        const mGain = act.moodDelta + Math.round(comfortBonus * 0.6);
+        state.coins -= act.costCoins;
+        state.energy = clampVital(state.energy + eGain);
+        state.mood = clampVital(state.mood + mGain);
+        advanceClockAndBills(act.minutes);
+        const girl = state.residents.find((r) => r.id === 'girl' && r.present && r.floor === item.floor);
+        if (girl) {
+          triggerResidentWave(girl, act.kind === 'sleep' ? '💤' : act.kind === 'bath' ? '🛁' : act.kind === 'meal' ? '🍳' : '✨');
+        }
+        hud.pushToast(
+          `${act.title.split('·')[0].trim()}完成：精力 +${eGain} · 心情 +${mGain}${comfortBonus > 0 ? `（小屋舒适度 +${comfortBonus}）` : ''}`,
+          'good'
+        );
+      }
+      pendingHomeItem = null;
+      save();
+      syncHud();
+    },
+    onDismissHomeActivity: () => {
+      pendingHomeItem = null;
+      syncHud();
+    },
+    onPetCareVisit: () => {
+      triggerPetCareVisit();
+    },
+    onEnterMapLandmark: (landmarkId) => {
+      enterMapLandmark(landmarkId);
+    },
+    onHoverMapLandmark: (landmarkId) => {
+      if (sceneMode !== 'map') return;
+      hoveredHotspotId = landmarkId;
+      if (landmarkId) {
+        const lm = WORLD_MAP_LANDMARKS.find((m) => m.id === landmarkId);
+        if (lm) {
+          focusMapOnLandmark(lm);
+          hud.updateScrollArrowsOnly(state, cameraX, renderer.getViewDimensions().viewW);
+        }
+      }
+    },
   });
+
+  const switchScene = (scene: SceneMode, spot?: StreetSpotId): void => {
+    if (sceneMode === 'map' && scene !== 'map') {
+      lastMapCam = { x: cameraX, y: cameraY };
+    }
+    cancelActiveTool();
+    buildMode = false;
+    selectedUid = null;
+    selectedResidentId = null;
+    pendingHomeItem = null;
+    hoveredHotspotId = null;
+    sceneMode = scene;
+    if (spot && spot !== 'home' && spot !== 'market') {
+      activeStreetSpot = spot;
+    }
+    if (scene === 'map') {
+      cameraX = lastMapCam.x;
+      cameraY = lastMapCam.y;
+      clampCamera();
+    } else if (scene === 'street') {
+      cameraY = 0;
+      focusStreetActorOnSpot(activeStreetSpot);
+      const spotName = STREET_HOTSPOTS.find((h) => h.id === activeStreetSpot)?.name ?? '中央樱花公园长椅';
+      hud.pushToast(`🏙️ 来到海风商业街 · ${spotName}`, 'good');
+    } else if (scene === 'market') {
+      if (clock.day !== state.nightMarketDay) {
+        state.nightMarketDay = clock.day;
+        state.nightMarketSalesToday = 0;
+      }
+      cameraX = 0;
+      cameraY = 0;
+      clampCamera();
+      hud.pushToast(
+        clock.isNightMarketOpen
+          ? '🏮 星光海滨夜市火热开摊中！精选手作好物即可出摊'
+          : '🌙 星光海滨夜市 18:00–02:00 营业，可点下方直接跳时开市',
+        'normal'
+      );
+    } else {
+      cameraX = 0;
+      cameraY = 0;
+      clampCamera();
+      hud.pushToast('🏠 回到温馨小屋', 'normal');
+    }
+    save();
+    syncHud();
+  };
+
+  const triggerPetCareVisit = (): void => {
+    const shiba = state.residents.find((r) => r.id === 'shiba' && r.present);
+    if (state.coins >= 20) {
+      state.coins -= 20;
+      state.energy = clampVital(state.energy + 8);
+      state.mood = clampVital(state.mood + 24);
+      advanceClockAndBills(30);
+      if (shiba) triggerResidentWave(shiba, '🐶');
+      hud.pushToast('🐾 萌宠护理小屋顺毛spa完成：-20 G · 心情 +24', 'good');
+    } else {
+      state.mood = clampVital(state.mood + 12);
+      advanceClockAndBills(20);
+      if (shiba) triggerResidentWave(shiba, '🐶');
+      hud.pushToast('🐶 和豆包开心互动玩耍：心情 +12', 'good');
+    }
+    mapPetBubbleTimer = 2.8;
+    save();
+    syncHud();
+  };
+
+  const focusMapOnLandmark = (lm: WorldMapLandmark): void => {
+    const { viewW } = renderer.getViewDimensions();
+    const { mapW, mapH } = renderer.getWorldMapDimensions();
+    const lx = (lm.nx + lm.nw * 0.5) * mapW;
+    const ly = (lm.ny + lm.nh * 0.5) * mapH;
+    const padX = 90;
+    const padY = 60;
+    if (lx < cameraX + padX || lx > cameraX + viewW - padX) {
+      cameraX = lx - viewW * 0.5;
+    }
+    if (ly < cameraY + padY || ly > cameraY + VIRTUAL_HEIGHT - padY) {
+      cameraY = ly - VIRTUAL_HEIGHT * 0.5;
+    }
+    clampCamera();
+  };
+
+  const enterMapLandmark = (landmarkId: WorldMapLandmarkId): void => {
+    const lm = WORLD_MAP_LANDMARKS.find((m) => m.id === landmarkId);
+    if (!lm) return;
+    if (lm.targetScene === 'pet') {
+      focusMapOnLandmark(lm);
+      triggerPetCareVisit();
+      return;
+    }
+    if (lm.targetScene === 'home') {
+      switchScene('home');
+    } else if (lm.targetScene === 'market') {
+      switchScene('market');
+    } else {
+      switchScene('street', lm.targetSpot);
+    }
+  };
 
   const getActiveToolLabel = (): string | null => {
     if (placingMode) {
@@ -597,7 +1038,7 @@ async function bootstrap(): Promise<void> {
       ? state.placedItems.find((i) => i.uid === selectedUid && i.floor === state.activeFloor) ?? null
       : null;
     const selectedResident =
-      !buildMode && selectedResidentId
+      !buildMode && sceneMode === 'home' && selectedResidentId
         ? state.residents.find((r) => r.id === selectedResidentId && r.present && r.floor === state.activeFloor) ?? null
         : null;
     hud.update({
@@ -611,6 +1052,10 @@ async function bootstrap(): Promise<void> {
       paintStyleId: paintMode?.styleId ?? null,
       cameraX,
       viewW: renderer.getViewDimensions().viewW,
+      sceneMode,
+      activeStreetSpot,
+      activeMarketWare,
+      pendingHomeItem,
     });
   };
 
@@ -660,10 +1105,22 @@ async function bootstrap(): Promise<void> {
   canvas.addEventListener('pointerdown', (e) => {
     if (e.button === 2) {
       cancelActiveTool();
+      pendingHomeItem = null;
       syncHud();
       return;
     }
     if (e.button !== 0) return;
+
+    if (sceneMode !== 'home') {
+      isPanning = true;
+      panMoved = false;
+      panStartClientX = e.clientX;
+      panStartClientY = e.clientY;
+      panStartCamX = cameraX;
+      panStartCamY = cameraY;
+      canvas.classList.add('dragging');
+      return;
+    }
 
     pointerWorld = renderer.screenToWorld(e.clientX, e.clientY, cameraX);
 
@@ -774,9 +1231,10 @@ async function bootstrap(): Promise<void> {
     }
 
     // Play mode: hit-test residents/pets first for direct click or Miga-style drag & drop
-    if (!buildMode) {
+    if (!buildMode && sceneMode === 'home') {
       const hitRes = hitTestResident(pointerWorld.x, pointerWorld.y, state.activeFloor, state.residents, atlas);
       if (hitRes) {
+        pendingHomeItem = null;
         draggingRes = {
           res: hitRes,
           startClientX: e.clientX,
@@ -800,9 +1258,25 @@ async function bootstrap(): Promise<void> {
   });
 
   window.addEventListener('pointermove', (e) => {
-    pointerWorld = renderer.screenToWorld(e.clientX, e.clientY, cameraX);
+    if (sceneMode === 'map') {
+      const mapPt = renderer.screenToWorldMap(e.clientX, e.clientY, cameraX, cameraY);
+      const hitLm = hitTestMapLandmark(mapPt.x, mapPt.y);
+      hoveredHotspotId = hitLm?.id ?? null;
+      canvas.style.cursor = !isPanning && hitLm ? 'pointer' : '';
+    } else if (sceneMode === 'street') {
+      const outPt = renderer.screenToOutdoor(e.clientX, e.clientY, cameraX);
+      const hitSpot = STREET_HOTSPOTS.find(
+        (h) => outPt.x >= h.x && outPt.x <= h.x + h.w && outPt.y >= h.y && outPt.y <= h.y + h.h
+      );
+      hoveredHotspotId = hitSpot?.id ?? null;
+      canvas.style.cursor = !isPanning && hitSpot ? 'pointer' : '';
+    } else {
+      hoveredHotspotId = null;
+      canvas.style.cursor = '';
+      pointerWorld = renderer.screenToWorld(e.clientX, e.clientY, cameraX);
+    }
 
-    if (buildMode && paintMode) {
+    if (sceneMode === 'home' && buildMode && paintMode) {
       const f = state.floors[state.activeFloor];
       paintMode.hoverGridCol =
         pointerWorld.x >= 0 && pointerWorld.x <= f.gridCount * GRID_SIZE
@@ -810,7 +1284,7 @@ async function bootstrap(): Promise<void> {
           : null;
     }
 
-    if (buildMode && placingMode) {
+    if (sceneMode === 'home' && buildMode && placingMode) {
       updatePlacementPreview();
     }
 
@@ -833,11 +1307,15 @@ async function bootstrap(): Promise<void> {
     if (isPanning) {
       const rect = canvas.getBoundingClientRect();
       const scale = renderer.getViewDimensions().viewW / Math.max(1, rect.width);
-      const deltaClient = e.clientX - panStartClientX;
-      if (Math.abs(deltaClient) > 5) {
+      const deltaClientX = e.clientX - panStartClientX;
+      const deltaClientY = e.clientY - panStartClientY;
+      if (Math.hypot(deltaClientX, sceneMode === 'map' ? deltaClientY : 0) > 5) {
         panMoved = true;
       }
-      cameraX = panStartCamX - deltaClient * scale;
+      cameraX = panStartCamX - deltaClientX * scale;
+      if (sceneMode === 'map') {
+        cameraY = panStartCamY - deltaClientY * scale;
+      }
       clampCamera();
       hud.updateScrollArrowsOnly(state, cameraX, renderer.getViewDimensions().viewW);
     }
@@ -849,6 +1327,7 @@ async function bootstrap(): Promise<void> {
       draggingRes = null;
       canvas.classList.remove('dragging');
       selectedResidentId = dr.res.id;
+      pendingHomeItem = null;
 
       if (!dr.moved) {
         triggerResidentWave(dr.res);
@@ -875,6 +1354,29 @@ async function bootstrap(): Promise<void> {
     canvas.classList.remove('dragging');
 
     if (!panMoved && e.button === 0) {
+      if (sceneMode === 'map') {
+        const mapPt = renderer.screenToWorldMap(e.clientX, e.clientY, cameraX, cameraY);
+        const hitLm = hitTestMapLandmark(mapPt.x, mapPt.y);
+        if (hitLm) {
+          enterMapLandmark(hitLm.id);
+        }
+        return;
+      }
+      if (sceneMode === 'street') {
+        const outPt = renderer.screenToOutdoor(e.clientX, e.clientY, cameraX);
+        const hitSpot = STREET_HOTSPOTS.find(
+          (h) => outPt.x >= h.x && outPt.x <= h.x + h.w && outPt.y >= h.y && outPt.y <= h.y + h.h
+        );
+        if (hitSpot) {
+          activeStreetSpot = hitSpot.id;
+          focusStreetActorOnSpot(hitSpot.id);
+          hud.pushToast(`📍 已切换至「${hitSpot.name}」，可点击下方按钮打工或体验消费`, 'normal');
+          syncHud();
+        }
+        return;
+      }
+      if (sceneMode !== 'home') return;
+
       const world = renderer.screenToWorld(e.clientX, e.clientY, cameraX);
       const hit = hitTestPlacedItem(world.x, world.y, getFloorItems(), atlas);
 
@@ -882,27 +1384,42 @@ async function bootstrap(): Promise<void> {
         selectedUid = hit ? hit.uid : null;
         syncHud();
       } else {
-        if (!hit && selectedResidentId) {
-          selectedResidentId = null;
-          syncHud();
+        if (!hit) {
+          if (selectedResidentId || pendingHomeItem) {
+            selectedResidentId = null;
+            pendingHomeItem = null;
+            syncHud();
+          }
           return;
         }
-        if (hit) {
-          const meta = atlas.items[hit.itemId];
-          if (meta?.light || meta?.toggleState) {
-            hit.isActive = !hit.isActive;
+        const meta = atlas.items[hit.itemId];
+        if (meta?.light || meta?.toggleState) {
+          hit.isActive = !hit.isActive;
+          pendingHomeItem = null;
+          save();
+          syncHud();
+        } else if (meta?.isStairs) {
+          pendingHomeItem = null;
+          if (state.floors[2].unlocked) {
+            state.activeFloor = state.activeFloor === 1 ? 2 : 1;
+            cameraX = 0;
+            clampCamera();
             save();
             syncHud();
-          } else if (meta?.isStairs) {
-            if (state.floors[2].unlocked) {
-              state.activeFloor = state.activeFloor === 1 ? 2 : 1;
-              cameraX = 0;
-              clampCamera();
-              save();
-              syncHud();
-            } else {
-              hud.pushToast(`二楼尚未加盖，点击右上角「🧱 扩建」即可解锁 (4,500 G)`, 'normal');
-            }
+          } else {
+            hud.pushToast(`二楼尚未加盖，点击右上角「🧱 扩建」即可解锁 (4,500 G)`, 'normal');
+          }
+        } else {
+          const hasComputer = state.placedItems.some(
+            (p) => p.floor === state.activeFloor && p.itemId === 'desktop_pc_set'
+          );
+          if (getHomeApplianceActionMeta(hit.itemId, hasComputer)) {
+            pendingHomeItem = hit;
+            selectedResidentId = null;
+            syncHud();
+          } else if (pendingHomeItem) {
+            pendingHomeItem = null;
+            syncHud();
           }
         }
       }
@@ -934,6 +1451,8 @@ async function bootstrap(): Promise<void> {
     if (e.key === 'Escape') {
       if (placingMode || paintMode) {
         cancelActiveTool();
+      } else if (pendingHomeItem) {
+        pendingHomeItem = null;
       } else if (selectedUid) {
         selectedUid = null;
       } else if (selectedResidentId) {
@@ -961,6 +1480,7 @@ async function bootstrap(): Promise<void> {
     syncHud();
   });
 
+  clampCamera();
   syncHud();
 
   // --- Main Loop ---
@@ -973,6 +1493,9 @@ async function bootstrap(): Promise<void> {
     const dt = Math.min(0.1, (now - lastTime) / 1000);
     lastTime = now;
     elapsedSec += dt;
+    if (mapPetBubbleTimer > 0) {
+      mapPetBubbleTimer = Math.max(0, mapPetBubbleTimer - dt);
+    }
 
     const panSpeed = 360 * dt;
     let panKeyMoved = false;
@@ -984,37 +1507,45 @@ async function bootstrap(): Promise<void> {
       cameraX += panSpeed;
       panKeyMoved = true;
     }
+    if (sceneMode === 'map' && (pressedKeys.has('w') || pressedKeys.has('arrowup'))) {
+      cameraY -= panSpeed;
+      panKeyMoved = true;
+    }
+    if (sceneMode === 'map' && (pressedKeys.has('s') || pressedKeys.has('arrowdown'))) {
+      cameraY += panSpeed;
+      panKeyMoved = true;
+    }
     if (panKeyMoved) {
       clampCamera();
       hud.updateScrollArrowsOnly(state, cameraX, renderer.getViewDimensions().viewW);
     }
 
     const { dayChanged, triggerSundayBill } = clock.advance(dt);
-    if (triggerSundayBill) {
-      const bill = calculateWeeklyBill(getTotalUnlockedGrids(state), getTotalAssetValue(state));
-      state.coins = Math.max(0, state.coins - bill.total);
-      save();
-      hud.pushToast(`📬 周日物业水电账单结算：-${bill.total} G`, 'warn');
-      syncHud();
-    } else if (dayChanged) {
+    if (handleClockEvents(dayChanged, triggerSundayBill)) {
       save();
       syncHud();
     }
 
-    // Advance Phase 2 resident AI cleanly
-    updateResidents(
-      state.residents,
-      state.placedItems,
-      state.floors,
-      atlas,
-      dt,
-      clock.speed,
-      clock.hour,
-      draggingRes?.res.id ?? null
-    );
+    // Advance Phase 2 resident AI or Phase 3-4 outdoor actors
+    if (sceneMode === 'street') {
+      updateOutdoorActors(streetActors, dt, clock.speed);
+    } else if (sceneMode === 'market') {
+      updateOutdoorActors(marketActors, dt, clock.speed);
+    } else {
+      updateResidents(
+        state.residents,
+        state.placedItems,
+        state.floors,
+        atlas,
+        dt,
+        clock.speed,
+        clock.hour,
+        draggingRes?.res.id ?? null
+      );
+    }
 
     // Sync floating action bar smoothly if selected resident changed state autonomously
-    if (selectedResidentId && !buildMode) {
+    if (sceneMode === 'home' && selectedResidentId && !buildMode) {
       const selR = state.residents.find((r) => r.id === selectedResidentId);
       const sig = selR ? `${selR.action}:${selR.outfit}` : '';
       if (sig !== lastSelectedAction) {
@@ -1030,11 +1561,16 @@ async function bootstrap(): Promise<void> {
     }
 
     renderer.render({
+      sceneMode,
+      outdoorActors: sceneMode === 'market' ? marketActors : streetActors,
+      hoveredHotspotId,
       floor: state.floors[state.activeFloor],
       placedOnFloor: getFloorItems(),
       residentsOnFloor: getFloorResidents(),
       clock,
       cameraX,
+      cameraY,
+      mapPetBubbleTimer,
       buildMode,
       selectedUid,
       selectedResidentId: buildMode ? null : selectedResidentId,

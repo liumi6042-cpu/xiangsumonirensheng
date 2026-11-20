@@ -65,10 +65,23 @@ export class GameClock {
       return { dayChanged: false, triggerSundayBill: false };
     }
 
-    // 档位 B: 1 real second = 1 game minute at 1x speed
     const speedMult = this.speed === 1 ? 1 : this.speed === 2 ? 3 : 8;
     this.accumSec += dtSeconds * speedMult;
+    return this.drainMinutes();
+  }
 
+  public advanceMinutes(minutes: number): {
+    dayChanged: boolean;
+    triggerSundayBill: boolean;
+  } {
+    this.accumSec += Math.max(0, minutes);
+    return this.drainMinutes();
+  }
+
+  private drainMinutes(): {
+    dayChanged: boolean;
+    triggerSundayBill: boolean;
+  } {
     let dayChanged = false;
     let triggerSundayBill = false;
 

@@ -68,6 +68,11 @@ export interface GameSaveState {
   placedItems: PlacedItem[];
   inventory: InventoryItem[];
   residents: ResidentState[];
+  energy: number;
+  mood: number;
+  careerXp: number;
+  nightMarketDay: number;
+  nightMarketSalesToday: number;
   nextUid: number;
 }
 
@@ -228,6 +233,11 @@ export function createInitialSaveState(): GameSaveState {
     ],
     inventory: [],
     residents: createInitialResidents(),
+    energy: 88,
+    mood: 86,
+    careerXp: 0,
+    nightMarketDay: 1,
+    nightMarketSalesToday: 0,
     nextUid: uidCounter,
   };
 }
@@ -243,6 +253,11 @@ export function loadSaveState(): GameSaveState {
     if (!Array.isArray(parsed.residents) || parsed.residents.length === 0) {
       parsed.residents = createInitialResidents();
     }
+    if (typeof parsed.energy !== 'number') parsed.energy = 88;
+    if (typeof parsed.mood !== 'number') parsed.mood = 86;
+    if (typeof parsed.careerXp !== 'number') parsed.careerXp = 0;
+    if (typeof parsed.nightMarketDay !== 'number') parsed.nightMarketDay = parsed.day;
+    if (typeof parsed.nightMarketSalesToday !== 'number') parsed.nightMarketSalesToday = 0;
     return parsed;
   } catch {
     return createInitialSaveState();

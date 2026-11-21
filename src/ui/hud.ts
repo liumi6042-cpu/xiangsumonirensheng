@@ -2,15 +2,20 @@ import { RESIDENT_DEFS, RESIDENT_DEF_MAP, type ResidentAction, type ResidentId, 
 import type { GameClock } from '../core/clock';
 import { getFloorWidthPx, getNextExpansionForFloor, getTotalAssetValue, getTotalComfortScore, getTotalUnlockedGrids, type GameSaveState, type PlacedItem } from '../core/roomState';
 import {
+  ISLAND_MILESTONES,
   MARKET_WARES,
   STREET_HOTSPOTS,
+  VENUE_DEFS,
   WORLD_MAP_LANDMARKS,
   WORLD_MAP_SIZE,
+  computeRoommateRent,
   getCareerTier,
   getHomeApplianceActionMeta,
   type MarketWareId,
   type SceneMode,
   type StreetSpotId,
+  type VenueHotspotDef,
+  type VenueId,
   type WorldMapLandmarkId,
 } from '../core/townLife';
 import { CATALOG_ITEMS, CATALOG_MAP, FLOOR_STYLES, WALL_STYLES, type AtlasJson, type CatalogCategory } from '../data/catalog';
@@ -57,12 +62,18 @@ export interface HudCallbacks {
   onPetCareVisit: () => void;
   onEnterMapLandmark: (landmarkId: WorldMapLandmarkId) => void;
   onHoverMapLandmark: (landmarkId: WorldMapLandmarkId | null) => void;
+  // Phase 5-6 venue interiors
+  onTriggerVenueHotspot: (hotspot: VenueHotspotDef) => void;
+  onToggleVenueLights: () => void;
+  onSalonStyleGirl: () => void;
 }
 
 interface HudUpdate {
   state: GameSaveState;
   clock: GameClock;
   sceneMode: SceneMode;
+  activeVenueId: VenueId;
+  venueLightsOn: boolean;
   activeStreetSpot: Exclude<StreetSpotId, 'home' | 'market'>;
   activeMarketWare: MarketWareId;
   pendingHomeItem: PlacedItem | null;
@@ -304,6 +315,9 @@ export class GameHud {
       const topLine = el('span', 'comfort-row');
       if (isMap) {
         topLine.append(icon('map', 13), document.createTextNode('漫时光小岛'), el('span', 'career-chip', `Lv.${tier.level} ${tier.title}`));
+      } else if (sceneMode === 'venue') {
+        const vDef = VENUE_DEFS[params.activeVenueId];
+        topLine.append(icon('store', 13), document.createTextNode(vDef.name), el('span', 'career-chip', `Lv.${tier.level} ${tier.title}`));
       } else if (sceneMode === 'street') {
         topLine.append(icon('store', 13), document.createTextNode('商业街'), el('span', 'career-chip', `Lv.${tier.level} ${tier.title}`));
       } else if (sceneMode === 'market') {
@@ -333,13 +347,16 @@ export class GameHud {
     this.balance.textContent = money(state.coins);
     this.coinBadge.setAttribute('aria-label', `小屋账本，余额 ${this.balance.textContent}`);
     const bill = calculateWeeklyBill(getTotalUnlockedGrids(state), getTotalAssetValue(state));
+    const comfort = getTotalComfortScore(state);
     const tier = getCareerTier(state.careerXp);
+    const rentEst = computeRoommateRent(state, comfort);
     const lines = [
       ['当前职级', `Lv.${tier.level} ${tier.title} (×${tier.multiplier})`],
-      ['当天退货', '原价退回'],
-      ['跨天出售', '原价的 65%'],
-      ['周日 20:00 预计账单', money(bill.total)],
-      ['小屋温馨度', `+${getTotalComfortScore(state)}`],
+      ['3日合租分摊', rentEst.roommateCount > 0 ? `+${money(rentEst.rent)} (${rentEst.roommateCount}位室友)` : '请进屋后解锁'],
+      ['小岛集章', `${state.claimedMilestones.length}/${ISLAND_MILESTONES.length} 枚 · 打卡 ${state.visitedLandmarks.length}/8`],
+      ['当天/跨天出售', '当天 100% · 跨天 65%'],
+      ['周日 20:00 账单', money(bill.total)],
+      ['小屋温馨度', `+${comfort}`],
     ];
     this.tooltip.replaceChildren(el('strong', '', '小屋账本'));
     for (const [label, value] of lines) {
@@ -396,6 +413,44 @@ export class GameHud {
         b.onmouseleave = () => this.cb.onHoverMapLandmark(null);
         nodes.push(b);
       }
+      this.residentBar.replaceChildren(...nodes);
+      return;
+    }
+
+    if (sceneMode === 'venue') {
+      this.residentBar.hidden = false;
+      const venue = VENUE_DEFS[params.activeVenueId];
+      const key = `venue/${venue.id}/${params.venueLightsOn}/${Math.round(state.energy)}/${state.coins}`;
+      if (this.residentKey === key) return;
+      this.residentKey = key;
+      const nodes: HTMLElement[] = [];
+      for (const hs of venue.hotspots) {
+        const glyph: IconName =
+          hs.actionKind === 'job'
+            ? 'bolt'
+            : hs.actionKind === 'gacha'
+              ? 'gift'
+              : hs.actionKind === 'pet_spa'
+                ? 'paw'
+                : venue.id === 'bakery'
+                  ? 'bread'
+                  : 'cup';
+        nodes.push(
+          button(
+            hs.buttonText,
+            glyph,
+            () => this.cb.onTriggerVenueHotspot(hs),
+            hs.actionKind === 'job' || hs.actionKind === 'pet_spa' ? 'gold' : '',
+            hs.label
+          )
+        );
+      }
+      if (venue.id === 'salon') {
+        nodes.push(button('换造型', 'scissors', () => this.cb.onSalonStyleGirl(), '', '轮换小葵的每日造型并加心情'));
+      }
+      const lightBtn = button(params.venueLightsOn ? '灯光:开' : '灯光:关', 'sparkle', () => this.cb.onToggleVenueLights(), 'speed-btn');
+      pressed(lightBtn, params.venueLightsOn);
+      nodes.push(lightBtn);
       this.residentBar.replaceChildren(...nodes);
       return;
     }

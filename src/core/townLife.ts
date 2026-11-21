@@ -2,7 +2,8 @@ import { CATALOG_ITEMS, type AtlasJson } from '../data/catalog';
 import { CAREER_WAGE_TABLE, ECONOMY } from '../data/economy';
 import type { GameSaveState } from './roomState';
 
-export type SceneMode = 'map' | 'home' | 'street' | 'market';
+export type SceneMode = 'map' | 'home' | 'street' | 'market' | 'venue';
+export type VenueId = 'cafe' | 'bakery' | 'salon' | 'pet';
 export type StreetSpotId = 'cafe' | 'salon' | 'bakery' | 'park' | 'home' | 'market';
 export type MarketWareId = 'coffee' | 'pastry' | 'craft';
 export type WorldMapLandmarkId = 'home' | 'salon' | 'bakery' | 'store' | 'park' | 'cafe' | 'pet' | 'market';
@@ -21,8 +22,9 @@ export interface WorldMapLandmark {
   pinX: number;
   pinY: number;
   accentColor: string;
-  targetScene: Exclude<SceneMode, 'map'> | 'pet';
+  targetScene: Exclude<SceneMode, 'map'>;
   targetSpot?: Exclude<StreetSpotId, 'home' | 'market'>;
+  targetVenue?: VenueId;
 }
 
 export const WORLD_MAP_LANDMARKS: WorldMapLandmark[] = [
@@ -43,8 +45,8 @@ export const WORLD_MAP_LANDMARKS: WorldMapLandmark[] = [
   {
     id: 'salon',
     name: '美发造型沙龙',
-    tag: '打工/盲盒',
-    actionHint: '进入海风商业街造型店，体验助理兼职与饰品街区',
+    tag: '进店体验',
+    actionHint: '走进糖心造型沙龙室内：造型兼职、当场试穿新造型或抽扭蛋',
     nx: 0.02,
     ny: 0.58,
     nw: 0.20,
@@ -52,14 +54,14 @@ export const WORLD_MAP_LANDMARKS: WorldMapLandmark[] = [
     pinX: 0.125,
     pinY: 0.855,
     accentColor: '#75A5CE',
-    targetScene: 'street',
-    targetSpot: 'salon',
+    targetScene: 'venue',
+    targetVenue: 'salon',
   },
   {
     id: 'bakery',
     name: '晨光面包房',
-    tag: '烘焙/可颂',
-    actionHint: '进入烘焙街区帮忙出炉可颂（+160~320G）或买面包回体力',
+    tag: '进店烘焙',
+    actionHint: '走进可颂烘焙坊室内：烘焙打工或现买热乎酥脆黄油可颂',
     nx: 0.26,
     ny: 0.14,
     nw: 0.18,
@@ -67,14 +69,14 @@ export const WORLD_MAP_LANDMARKS: WorldMapLandmark[] = [
     pinX: 0.35,
     pinY: 0.40,
     accentColor: '#DF9F42',
-    targetScene: 'street',
-    targetSpot: 'bakery',
+    targetScene: 'venue',
+    targetVenue: 'bakery',
   },
   {
     id: 'store',
     name: '手作杂货百货',
     tag: '180G扭蛋',
-    actionHint: '前往街区扭蛋屋，-180G 抽取精选 T1/T2 家具直接进仓库',
+    actionHint: '走进手作扭蛋百货室内，-180G 抽取精选 T1/T2 家具直接进仓库',
     nx: 0.25,
     ny: 0.60,
     nw: 0.20,
@@ -82,8 +84,8 @@ export const WORLD_MAP_LANDMARKS: WorldMapLandmark[] = [
     pinX: 0.355,
     pinY: 0.86,
     accentColor: '#699F78',
-    targetScene: 'street',
-    targetSpot: 'salon',
+    targetScene: 'venue',
+    targetVenue: 'salon',
   },
   {
     id: 'park',
@@ -103,8 +105,8 @@ export const WORLD_MAP_LANDMARKS: WorldMapLandmark[] = [
   {
     id: 'cafe',
     name: '海风咖啡街区',
-    tag: '打工/拿铁',
-    actionHint: '进入玻璃花房咖啡馆兼职赚金币或喝拿铁提神',
+    tag: '进店咖啡',
+    actionHint: '走进海风玻璃花房咖啡馆室内：咖啡师兼职或点现磨拿铁甜点',
     nx: 0.56,
     ny: 0.14,
     nw: 0.28,
@@ -112,14 +114,14 @@ export const WORLD_MAP_LANDMARKS: WorldMapLandmark[] = [
     pinX: 0.705,
     pinY: 0.40,
     accentColor: '#5B9A77',
-    targetScene: 'street',
-    targetSpot: 'cafe',
+    targetScene: 'venue',
+    targetVenue: 'cafe',
   },
   {
     id: 'pet',
     name: '萌宠护理小屋',
-    tag: '撸狗+心情',
-    actionHint: '摸摸豆包并做暖心顺毛护理（心情大涨）',
+    tag: '进店撸狗',
+    actionHint: '走进萌宠洗护小屋室内：陪豆包洗香香泡泡浴或兼职宠物美容师',
     nx: 0.52,
     ny: 0.60,
     nw: 0.28,
@@ -127,7 +129,8 @@ export const WORLD_MAP_LANDMARKS: WorldMapLandmark[] = [
     pinX: 0.66,
     pinY: 0.88,
     accentColor: '#C9894C',
-    targetScene: 'pet',
+    targetScene: 'venue',
+    targetVenue: 'pet',
   },
   {
     id: 'market',
@@ -224,6 +227,7 @@ export interface OutdoorActor {
   walkPhase: number;
   speed: number;
   pauseTimer: number;
+  seated?: boolean;
   emoteText?: string;
   emoteTimer: number;
 }
@@ -239,7 +243,9 @@ export function getCareerTier(xp: number): CareerTierInfo {
   if (xp < 60) return { level: 1, title: '见习小透明', multiplier: 1.0, nextXp: 60 };
   if (xp < 160) return { level: 2, title: '街区热心帮手', multiplier: 1.15, nextXp: 160 };
   if (xp < 320) return { level: 3, title: '手作设计达人', multiplier: 1.32, nextXp: 320 };
-  return { level: 4, title: '小岛口碑大师', multiplier: 1.5, nextXp: null };
+  if (xp < 540) return { level: 4, title: '小岛口碑大师', multiplier: 1.5, nextXp: 540 };
+  if (xp < 880) return { level: 5, title: '独立主理人', multiplier: 1.75, nextXp: 880 };
+  return { level: 6, title: '漫时光梦想家', multiplier: 2.0, nextXp: null };
 }
 
 export function clampVital(val: number): number {
@@ -406,7 +412,7 @@ export function updateOutdoorActors(actors: OutdoorActor[], dt: number, speedMul
   for (const a of actors) {
     a.emoteTimer = Math.max(0, a.emoteTimer - stepDt);
     if (a.emoteTimer <= 0) a.emoteText = undefined;
-    if (a.speed <= 0) continue;
+    if (a.speed <= 0 || a.seated) continue;
 
     if (a.pauseTimer > 0) {
       a.pauseTimer -= stepDt;
@@ -450,6 +456,7 @@ export function pullGachaItem(state: GameSaveState, atlas: AtlasJson, currentDay
     boughtOnDay: currentDay,
     purchasePrice: pick.price,
   });
+  state.gachaPullCount += 1;
   return { itemId: pick.id, itemName: pick.name, tier: pick.tier };
 }
 
@@ -477,15 +484,39 @@ export function computeFreelanceOrderPay(
 ): number {
   const tier = getCareerTier(xp);
   if (hasComputer) {
+    const comfortBoost = 1 + Math.min(0.28, comfortScore / 800);
+    if (tier.level >= 5) {
+      const rawExpert = randomRange(
+        CAREER_WAGE_TABLE.expertCareer.min,
+        CAREER_WAGE_TABLE.expertCareer.max
+      );
+      return Math.round(rawExpert * (tier.level >= 6 ? 1.15 : 1.0) * comfortBoost);
+    }
     const raw = randomRange(
       CAREER_WAGE_TABLE.midFreelanceAndMarket.min,
       CAREER_WAGE_TABLE.midFreelanceAndMarket.max
     );
-    const comfortBoost = 1 + Math.min(0.25, comfortScore / 800);
     return Math.round(raw * tier.multiplier * comfortBoost);
   }
   const raw = randomRange(CAREER_WAGE_TABLE.sideGig.min, CAREER_WAGE_TABLE.sideGig.max);
   return Math.round(raw * tier.multiplier);
+}
+
+export function computeRoommateRent(state: GameSaveState, comfortScore: number): {
+  rent: number;
+  roommateCount: number;
+} {
+  const roommates = state.residents.filter((r) => r.present && r.id !== 'girl' && r.id !== 'shiba');
+  const count = roommates.length;
+  if (count === 0) return { rent: 0, roommateCount: 0 };
+  const rentCfg = CAREER_WAGE_TABLE.roommateRentEvery3Days;
+  const baseRent = randomRange(rentCfg.min, rentCfg.max);
+  const scaleFactor = 1 + Math.max(0, count - 1) * 0.25 + (state.floors[2].unlocked ? 0.25 : 0);
+  const comfortFactor = 1 + Math.min(0.25, comfortScore / 900);
+  return {
+    rent: Math.round(baseRent * scaleFactor * comfortFactor),
+    roommateCount: count,
+  };
 }
 
 export function computeNightMarketSale(ware: MarketWareDef, xp: number, mood: number): {
@@ -609,3 +640,489 @@ export function getHomeApplianceActionMeta(
   }
   return null;
 }
+
+export interface VenueHotspotDef {
+  id: string;
+  label: string;
+  actionKind: 'job' | 'treat' | 'treat_special' | 'gacha' | 'pet_spa' | 'outfit';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  buttonText: string;
+  energyCost?: number;
+  coinCost?: number;
+  energyGain?: number;
+  moodGain?: number;
+  minutes: number;
+  xpGain: number;
+}
+
+export interface VenueDef {
+  id: VenueId;
+  name: string;
+  subtitle: string;
+  backdropUrl: string;
+  floorMinY: number;
+  floorMaxY: number;
+  hotspots: VenueHotspotDef[];
+  seats: Array<{ x: number; footY: number; facing: 'left' | 'right' }>;
+  lampGlows: Array<{ x: number; y: number; r: number }>;
+}
+
+export const VENUE_DEFS: Record<VenueId, VenueDef> = {
+  cafe: {
+    id: 'cafe',
+    name: '海风玻璃花房咖啡馆',
+    subtitle: '点击咖啡吧台或甜点柜台互动；拖动人物坐到餐桌旁',
+    backdropUrl: './assets/backdrops/venue_cafe.png',
+    floorMinY: 388,
+    floorMaxY: 495,
+    hotspots: [
+      {
+        id: 'cafe_bar',
+        label: '手冲咖啡吧台 · 打工',
+        actionKind: 'job',
+        x: 10,
+        y: 120,
+        w: 222,
+        h: 248,
+        buttonText: '咖啡兼职 (+160~320G+)',
+        energyCost: 24,
+        minutes: 120,
+        xpGain: 18,
+      },
+      {
+        id: 'cafe_latte',
+        label: '现磨拿铁 & 甜点柜',
+        actionKind: 'treat',
+        x: 235,
+        y: 168,
+        w: 165,
+        h: 198,
+        buttonText: '海风拿铁 (-18G · +18⚡/+22😊)',
+        coinCost: ECONOMY.coffeePrice,
+        energyGain: 18,
+        moodGain: 22,
+        minutes: 25,
+        xpGain: 4,
+      },
+    ],
+    seats: [
+      { x: 598, footY: 382, facing: 'right' },
+      { x: 706, footY: 382, facing: 'left' },
+      { x: 790, footY: 382, facing: 'right' },
+      { x: 902, footY: 382, facing: 'left' },
+    ],
+    lampGlows: [
+      { x: 80, y: 115, r: 145 },
+      { x: 185, y: 115, r: 145 },
+      { x: 905, y: 190, r: 155 },
+    ],
+  },
+  bakery: {
+    id: 'bakery',
+    name: '晨光可颂烘焙坊',
+    subtitle: '点击窑炉与甜点柜烘焙打工或买现烤面包',
+    backdropUrl: './assets/backdrops/venue_bakery.png',
+    floorMinY: 388,
+    floorMaxY: 495,
+    hotspots: [
+      {
+        id: 'bakery_oven',
+        label: '金黄窑烤烘焙台 · 打工',
+        actionKind: 'job',
+        x: 16,
+        y: 100,
+        w: 315,
+        h: 270,
+        buttonText: '烘焙兼职 (+160~320G+)',
+        energyCost: 24,
+        minutes: 120,
+        xpGain: 18,
+      },
+      {
+        id: 'bakery_case',
+        label: '酥脆可颂展示柜',
+        actionKind: 'treat',
+        x: 336,
+        y: 135,
+        w: 318,
+        h: 235,
+        buttonText: '黄油可颂 (-12G · +26⚡/+16😊)',
+        coinCost: 12,
+        energyGain: 26,
+        moodGain: 16,
+        minutes: 25,
+        xpGain: 4,
+      },
+    ],
+    seats: [
+      { x: 718, footY: 382, facing: 'left' },
+      { x: 782, footY: 382, facing: 'left' },
+    ],
+    lampGlows: [
+      { x: 130, y: 215, r: 165 },
+      { x: 405, y: 95, r: 150 },
+      { x: 505, y: 95, r: 150 },
+      { x: 600, y: 95, r: 150 },
+    ],
+  },
+  salon: {
+    id: 'salon',
+    name: '糖心沙龙 & 扭蛋杂货屋',
+    subtitle: '点击造型台打工或换装；点击右侧扭蛋机抽盲盒进仓库',
+    backdropUrl: './assets/backdrops/venue_salon.png',
+    floorMinY: 392,
+    floorMaxY: 495,
+    hotspots: [
+      {
+        id: 'salon_mirror',
+        label: '星光造型镜台 · 兼职',
+        actionKind: 'job',
+        x: 20,
+        y: 95,
+        w: 405,
+        h: 278,
+        buttonText: '造型兼职 (+160~320G+)',
+        energyCost: 24,
+        minutes: 120,
+        xpGain: 18,
+      },
+      {
+        id: 'salon_gacha',
+        label: '彩虹惊喜盲盒扭蛋机',
+        actionKind: 'gacha',
+        x: 685,
+        y: 120,
+        w: 162,
+        h: 256,
+        buttonText: `抽扭蛋 (-${ECONOMY.gachaPullPrice}G)`,
+        coinCost: ECONOMY.gachaPullPrice,
+        moodGain: 18,
+        minutes: 15,
+        xpGain: 6,
+      },
+    ],
+    seats: [
+      { x: 113, footY: 388, facing: 'right' },
+      { x: 330, footY: 388, facing: 'right' },
+    ],
+    lampGlows: [
+      { x: 105, y: 180, r: 150 },
+      { x: 335, y: 180, r: 150 },
+      { x: 765, y: 245, r: 150 },
+    ],
+  },
+  pet: {
+    id: 'pet',
+    name: '萌宠护理与洗护小屋',
+    subtitle: '点击暖香浴缸给豆包洗泡泡浴；点击零食柜台兼职',
+    backdropUrl: './assets/backdrops/venue_pet.png',
+    floorMinY: 388,
+    floorMaxY: 495,
+    hotspots: [
+      {
+        id: 'pet_tub',
+        label: '泡泡顺毛洗护浴缸',
+        actionKind: 'pet_spa',
+        x: 18,
+        y: 140,
+        w: 280,
+        h: 236,
+        buttonText: '柴犬泡泡SPA (-20G · +8⚡/+28😊)',
+        coinCost: 20,
+        energyGain: 8,
+        moodGain: 28,
+        minutes: 30,
+        xpGain: 6,
+      },
+      {
+        id: 'pet_counter',
+        label: '宠物零食收银台 · 兼职',
+        actionKind: 'job',
+        x: 655,
+        y: 80,
+        w: 295,
+        h: 292,
+        buttonText: '美容兼职 (+160~320G+)',
+        energyCost: 24,
+        minutes: 120,
+        xpGain: 18,
+      },
+    ],
+    seats: [
+      { x: 542, footY: 382, facing: 'left' },
+    ],
+    lampGlows: [
+      { x: 92, y: 100, r: 145 },
+      { x: 225, y: 100, r: 145 },
+      { x: 785, y: 170, r: 155 },
+    ],
+  },
+};
+
+export function createVenueActors(venueId: VenueId): OutdoorActor[] {
+  if (venueId === 'cafe') {
+    return [
+      {
+        spritePrefix: 'char_chef_barista',
+        staticSprite: 'char_chef_barista',
+        hasWalkFrames: false,
+        name: '麦麦 (咖啡师)',
+        x: 205,
+        y: 418,
+        minX: 110,
+        maxX: 295,
+        facing: 'right',
+        walkPhase: 0,
+        speed: 22,
+        pauseTimer: 2.5,
+        emoteText: '☕',
+        emoteTimer: 2.6,
+      },
+      {
+        spritePrefix: 'char_girl',
+        staticSprite: 'char_girl_basic',
+        hasWalkFrames: true,
+        name: '小葵',
+        x: 525,
+        y: 454,
+        minX: 390,
+        maxX: 790,
+        facing: 'right',
+        walkPhase: 0,
+        speed: 48,
+        pauseTimer: 1.4,
+        emoteText: '🍰',
+        emoteTimer: 2.2,
+      },
+      {
+        spritePrefix: 'char_boy',
+        staticSprite: 'char_boy_basic',
+        hasWalkFrames: true,
+        name: '阿墨',
+        x: 720,
+        y: 456,
+        minX: 560,
+        maxX: 860,
+        facing: 'left',
+        walkPhase: 0,
+        speed: 42,
+        pauseTimer: 2.0,
+        emoteTimer: 0,
+      },
+    ];
+  }
+  if (venueId === 'bakery') {
+    return [
+      {
+        spritePrefix: 'char_chef_barista',
+        staticSprite: 'char_chef_barista',
+        hasWalkFrames: false,
+        name: '麦麦 (烘焙师)',
+        x: 235,
+        y: 424,
+        minX: 120,
+        maxX: 360,
+        facing: 'right',
+        walkPhase: 0,
+        speed: 24,
+        pauseTimer: 2.2,
+        emoteText: '🥐',
+        emoteTimer: 2.6,
+      },
+      {
+        spritePrefix: 'char_toddler_kid',
+        staticSprite: 'char_toddler_kid',
+        hasWalkFrames: false,
+        name: '芽芽',
+        x: 490,
+        y: 458,
+        minX: 380,
+        maxX: 690,
+        facing: 'left',
+        walkPhase: 0,
+        speed: 44,
+        pauseTimer: 1.6,
+        emoteText: '😋',
+        emoteTimer: 2.0,
+      },
+      {
+        spritePrefix: 'char_girl',
+        staticSprite: 'char_girl_outfit_summer',
+        hasWalkFrames: false,
+        name: '小葵',
+        x: 750,
+        y: 452,
+        minX: 580,
+        maxX: 850,
+        facing: 'left',
+        walkPhase: 0,
+        speed: 38,
+        pauseTimer: 1.8,
+        emoteTimer: 0,
+      },
+    ];
+  }
+  if (venueId === 'salon') {
+    return [
+      {
+        spritePrefix: 'char_florist_girl',
+        staticSprite: 'char_florist_girl',
+        hasWalkFrames: false,
+        name: '小夏 (造型师)',
+        x: 255,
+        y: 426,
+        minX: 120,
+        maxX: 430,
+        facing: 'left',
+        walkPhase: 0,
+        speed: 26,
+        pauseTimer: 2.3,
+        emoteText: '✨',
+        emoteTimer: 2.5,
+      },
+      {
+        spritePrefix: 'char_girl',
+        staticSprite: 'char_girl_basic',
+        hasWalkFrames: true,
+        name: '小葵',
+        x: 560,
+        y: 454,
+        minX: 410,
+        maxX: 775,
+        facing: 'right',
+        walkPhase: 0,
+        speed: 46,
+        pauseTimer: 1.5,
+        emoteText: '🎁',
+        emoteTimer: 2.4,
+      },
+      {
+        spritePrefix: 'char_boy',
+        staticSprite: 'char_boy_outfit_sport',
+        hasWalkFrames: false,
+        name: '阿墨',
+        x: 690,
+        y: 452,
+        minX: 480,
+        maxX: 820,
+        facing: 'left',
+        walkPhase: 0,
+        speed: 38,
+        pauseTimer: 2.1,
+        emoteTimer: 0,
+      },
+    ];
+  }
+  // pet cabin
+  return [
+    {
+      spritePrefix: 'shiba',
+      staticSprite: 'shiba_dog_pet',
+      hasWalkFrames: false,
+      name: '豆包',
+      x: 265,
+      y: 460,
+      minX: 180,
+      maxX: 620,
+      facing: 'right',
+      walkPhase: 0,
+      speed: 52,
+      pauseTimer: 1.4,
+      emoteText: '🫧',
+      emoteTimer: 2.6,
+    },
+    {
+      spritePrefix: 'char_florist_girl',
+      staticSprite: 'char_florist_girl',
+      hasWalkFrames: false,
+      name: '小夏 (护理师)',
+      x: 710,
+      y: 432,
+      minX: 540,
+      maxX: 810,
+      facing: 'left',
+      walkPhase: 0,
+      speed: 26,
+      pauseTimer: 2.4,
+      emoteText: '🐾',
+      emoteTimer: 2.2,
+    },
+    {
+      spritePrefix: 'char_toddler_kid',
+      staticSprite: 'char_toddler_kid',
+      hasWalkFrames: false,
+      name: '芽芽',
+      x: 420,
+      y: 454,
+      minX: 300,
+      maxX: 640,
+      facing: 'right',
+      walkPhase: 0,
+      speed: 40,
+      pauseTimer: 1.8,
+      emoteTimer: 0,
+    },
+  ];
+}
+
+export interface IslandMilestoneDef {
+  id: string;
+  title: string;
+  desc: string;
+  rewardCoins: number;
+  check: (state: GameSaveState, comfortScore: number) => boolean;
+}
+
+export const ISLAND_MILESTONES: IslandMilestoneDef[] = [
+  {
+    id: 'explore_4',
+    title: '初探海风小岛',
+    desc: '打卡 4 个不同小镇建筑',
+    rewardCoins: 180,
+    check: (s) => s.visitedLandmarks.length >= 4,
+  },
+  {
+    id: 'explore_all',
+    title: '全岛漫游达人',
+    desc: '打卡全部 8 处小镇地标',
+    rewardCoins: 380,
+    check: (s) => s.visitedLandmarks.length >= 8,
+  },
+  {
+    id: 'cozy_300',
+    title: '温馨小窝营造师',
+    desc: '小屋温馨度达到 300+',
+    rewardCoins: 260,
+    check: (_s, comfort) => comfort >= 300,
+  },
+  {
+    id: 'gacha_3',
+    title: '扭蛋盲盒收藏家',
+    desc: '在扭蛋屋抽取 3 次盲盒家具',
+    rewardCoins: 220,
+    check: (s) => s.gachaPullCount >= 3,
+  },
+  {
+    id: 'career_lv5',
+    title: '独立主理人之路',
+    desc: '职业等级达到 Lv.5 独立主理人',
+    rewardCoins: 500,
+    check: (s) => getCareerTier(s.careerXp).level >= 5,
+  },
+];
+
+export function evaluateMilestones(state: GameSaveState, comfortScore: number): IslandMilestoneDef[] {
+  const unlockedNow: IslandMilestoneDef[] = [];
+  for (const m of ISLAND_MILESTONES) {
+    if (!state.claimedMilestones.includes(m.id) && m.check(state, comfortScore)) {
+      state.claimedMilestones.push(m.id);
+      state.coins += m.rewardCoins;
+      unlockedNow.push(m);
+    }
+  }
+  return unlockedNow;
+}
+

@@ -39,14 +39,18 @@ import {
 import {
   MARKET_WARES,
   STREET_HOTSPOTS,
+  VENUE_DEFS,
   WORLD_MAP_LANDMARKS,
   clampVital,
   computeEntryJobPay,
   computeFreelanceOrderPay,
   computeHomeRecoveryBonus,
   computeNightMarketSale,
+  computeRoommateRent,
   createMarketActors,
   createStreetActors,
+  createVenueActors,
+  evaluateMilestones,
   getCareerTier,
   getHomeApplianceActionMeta,
   pullGachaItem,
@@ -55,6 +59,8 @@ import {
   type OutdoorActor,
   type SceneMode,
   type StreetSpotId,
+  type VenueHotspotDef,
+  type VenueId,
   type WorldMapLandmark,
   type WorldMapLandmarkId,
 } from './core/townLife';
@@ -80,6 +86,10 @@ async function loadSurfaceTextures(): Promise<Map<string, HTMLImageElement>> {
   urls.add('./assets/backdrops/backdrop_sunset_balcony.png');
   urls.add('./assets/backdrops/backdrop_night_starry_town.png');
   urls.add('./assets/backdrops/island_world_map.png');
+  urls.add('./assets/backdrops/venue_cafe.png');
+  urls.add('./assets/backdrops/venue_bakery.png');
+  urls.add('./assets/backdrops/venue_salon.png');
+  urls.add('./assets/backdrops/venue_pet.png');
 
   const entries = await Promise.all(
     Array.from(urls).map(async (url) => {
@@ -125,8 +135,10 @@ async function bootstrap(): Promise<void> {
   let selectedUid: string | null = null;
   let selectedResidentId: ResidentId | null = null;
 
-  // Phase 3-4 overworld-first world map, outdoor towns & daily life loop
+  // Phase 3-6 overworld-first world map, bespoke building venues & career life loop
   let sceneMode: SceneMode = 'map';
+  let activeVenueId: VenueId = 'cafe';
+  let venueLightsOn = true;
   let lastMapCam = { x: 40, y: 125 };
   let mapPetBubbleTimer = 0;
   let activeStreetSpot: Exclude<StreetSpotId, 'home' | 'market'> = 'cafe';
@@ -135,6 +147,21 @@ async function bootstrap(): Promise<void> {
   let hoveredHotspotId: string | null = null;
   let streetActors: OutdoorActor[] = createStreetActors();
   let marketActors: OutdoorActor[] = createMarketActors();
+  let venueActorsMap: Record<VenueId, OutdoorActor[]> = {
+    cafe: createVenueActors('cafe'),
+    bakery: createVenueActors('bakery'),
+    salon: createVenueActors('salon'),
+    pet: createVenueActors('pet'),
+  };
+  let draggingVenueActor: {
+    actor: OutdoorActor;
+    startClientX: number;
+    startClientY: number;
+    moved: boolean;
+    x: number;
+    y: number;
+    snapSeat: { x: number; footY: number; facing: 'left' | 'right' } | null;
+  } | null = null;
 
   let placingMode:
     | { kind: 'new'; itemId: string; variant: number; flipped: boolean }
@@ -237,11 +264,27 @@ async function bootstrap(): Promise<void> {
     persistSaveState(state);
   };
 
+  const checkAndNotifyMilestones = (): void => {
+    const unlocked = evaluateMilestones(state, getTotalComfortScore(state));
+    for (const m of unlocked) {
+      hud.pushToast(`🏆 解锁集章成就「${m.title}」：+${m.rewardCoins} G`, 'good');
+    }
+  };
+
   const handleClockEvents = (dayChanged: boolean, triggerSundayBill: boolean): boolean => {
     let dirty = dayChanged;
     if (clock.day !== state.nightMarketDay) {
       state.nightMarketDay = clock.day;
       state.nightMarketSalesToday = 0;
+      dirty = true;
+    }
+    if (clock.day >= state.lastRentCollectedDay + 3 && clock.hour >= 9) {
+      const rentRes = computeRoommateRent(state, getTotalComfortScore(state));
+      state.lastRentCollectedDay = clock.day;
+      if (rentRes.rent > 0) {
+        state.coins += rentRes.rent;
+        hud.pushToast(`🏡 合租室友(${rentRes.roommateCount}位)交来分摊心意：+${rentRes.rent} G`, 'good');
+      }
       dirty = true;
     }
     if (triggerSundayBill) {
@@ -554,10 +597,7 @@ async function bootstrap(): Promise<void> {
     },
     onJumpTime: (hour) => {
       const dayChanged = clock.skipToNextEveningOrMorning(hour);
-      if (clock.day !== state.nightMarketDay) {
-        state.nightMarketDay = clock.day;
-        state.nightMarketSalesToday = 0;
-      }
+      handleClockEvents(dayChanged, false);
       save();
       hud.pushToast(
         dayChanged
@@ -572,13 +612,22 @@ async function bootstrap(): Promise<void> {
       clock.day = state.day;
       clock.minuteOfDay = state.minuteOfDay;
       sceneMode = 'map';
+      activeVenueId = 'cafe';
+      venueLightsOn = true;
       lastMapCam = { x: 40, y: 125 };
       activeStreetSpot = 'cafe';
       activeMarketWare = 'coffee';
       pendingHomeItem = null;
       hoveredHotspotId = null;
+      draggingVenueActor = null;
       streetActors = createStreetActors();
       marketActors = createMarketActors();
+      venueActorsMap = {
+        cafe: createVenueActors('cafe'),
+        bakery: createVenueActors('bakery'),
+        salon: createVenueActors('salon'),
+        pet: createVenueActors('pet'),
+      };
       selectedUid = null;
       selectedResidentId = null;
       cancelActiveTool();
@@ -732,6 +781,7 @@ async function bootstrap(): Promise<void> {
       const shopName = STREET_HOTSPOTS.find((h) => h.id === spot)?.name ?? '街区店铺';
       hud.pushToast(`${shopName} 兼职完成：底薪 +${base}G + 小费 +${tip}G = +${total} G`, 'good');
       maybeNotifyPromotion(prevLevel, state.careerXp);
+      checkAndNotifyMilestones();
       save();
       syncHud();
     },
@@ -782,6 +832,7 @@ async function bootstrap(): Promise<void> {
         }
         hud.pushToast(`🎁 扭蛋开出 [${pulled.tier}]「${pulled.itemName}」！已放进装修仓库`, 'good');
       }
+      checkAndNotifyMilestones();
       save();
       syncHud();
     },
@@ -828,6 +879,7 @@ async function bootstrap(): Promise<void> {
         'good'
       );
       maybeNotifyPromotion(prevLevel, state.careerXp);
+      checkAndNotifyMilestones();
       save();
       syncHud();
     },
@@ -885,6 +937,7 @@ async function bootstrap(): Promise<void> {
         );
       }
       pendingHomeItem = null;
+      checkAndNotifyMilestones();
       save();
       syncHud();
     },
@@ -909,9 +962,41 @@ async function bootstrap(): Promise<void> {
         }
       }
     },
+    onTriggerVenueHotspot: (hotspot) => {
+      triggerVenueHotspot(hotspot);
+    },
+    onToggleVenueLights: () => {
+      venueLightsOn = !venueLightsOn;
+      syncHud();
+    },
+    onSalonStyleGirl: () => {
+      const girl = state.residents.find((r) => r.id === 'girl');
+      const outfits: Array<{ id: 'basic' | 'summer' | 'coat' | 'pajama'; label: string }> = [
+        { id: 'basic', label: '麻花毛衣' },
+        { id: 'summer', label: '草帽夏裙' },
+        { id: 'coat', label: '焦糖大衣' },
+        { id: 'pajama', label: '格子睡衣' },
+      ];
+      if (girl) {
+        const idx = outfits.findIndex((o) => o.id === girl.outfit);
+        const next = outfits[(idx + 1) % outfits.length];
+        girl.outfit = next.id;
+        const salonGirl = venueActorsMap.salon.find((a) => a.spritePrefix === 'char_girl');
+        if (salonGirl) {
+          salonGirl.staticSprite = next.id === 'basic' ? 'char_girl_basic' : `char_girl_outfit_${next.id}`;
+          salonGirl.hasWalkFrames = next.id === 'basic';
+          salonGirl.emoteText = '👗';
+          salonGirl.emoteTimer = 2.4;
+        }
+        state.mood = clampVital(state.mood + 8);
+        hud.pushToast(`✨ 为小葵换上「${next.label}」：心情 +8`, 'good');
+        save();
+        syncHud();
+      }
+    },
   });
 
-  const switchScene = (scene: SceneMode, spot?: StreetSpotId): void => {
+  const switchScene = (scene: SceneMode, spot?: StreetSpotId, venueId?: VenueId): void => {
     if (sceneMode === 'map' && scene !== 'map') {
       lastMapCam = { x: cameraX, y: cameraY };
     }
@@ -921,14 +1006,24 @@ async function bootstrap(): Promise<void> {
     selectedResidentId = null;
     pendingHomeItem = null;
     hoveredHotspotId = null;
+    draggingVenueActor = null;
     sceneMode = scene;
     if (spot && spot !== 'home' && spot !== 'market') {
       activeStreetSpot = spot;
+    }
+    if (venueId) {
+      activeVenueId = venueId;
     }
     if (scene === 'map') {
       cameraX = lastMapCam.x;
       cameraY = lastMapCam.y;
       clampCamera();
+    } else if (scene === 'venue') {
+      cameraX = 0;
+      cameraY = 0;
+      clampCamera();
+      const vDef = VENUE_DEFS[activeVenueId];
+      hud.pushToast(`🚪 走进「${vDef.name}」· ${vDef.subtitle}`, 'good');
     } else if (scene === 'street') {
       cameraY = 0;
       focusStreetActorOnSpot(activeStreetSpot);
@@ -949,11 +1044,15 @@ async function bootstrap(): Promise<void> {
         'normal'
       );
     } else {
+      if (!state.visitedLandmarks.includes('home')) {
+        state.visitedLandmarks.push('home');
+      }
       cameraX = 0;
       cameraY = 0;
       clampCamera();
       hud.pushToast('🏠 回到温馨小屋', 'normal');
     }
+    checkAndNotifyMilestones();
     save();
     syncHud();
   };
@@ -994,18 +1093,108 @@ async function bootstrap(): Promise<void> {
     clampCamera();
   };
 
+  const triggerVenueHotspot = (hs: VenueHotspotDef): void => {
+    const actors = venueActorsMap[activeVenueId];
+    const staff = actors[0];
+    if (hs.actionKind === 'job') {
+      const energyCost = hs.energyCost ?? 24;
+      if (state.energy < energyCost) {
+        hud.pushToast(`⚡ 精力不足（需 ${energyCost} 点），先吃点甜品或回屋休息吧`, 'warn');
+        return;
+      }
+      const prevLevel = getCareerTier(state.careerXp).level;
+      const { base, tip, total } = computeEntryJobPay(state.careerXp, state.mood);
+      state.coins += total;
+      state.energy = clampVital(state.energy - energyCost);
+      state.mood = clampVital(state.mood - 5);
+      state.careerXp += hs.xpGain;
+      advanceClockAndBills(hs.minutes);
+      if (staff) {
+        staff.emoteText = '💰';
+        staff.emoteTimer = 2.6;
+      }
+      hud.pushToast(`${hs.label.split('·')[0].trim()}完成：底薪 +${base}G + 小费 +${tip}G = +${total} G`, 'good');
+      maybeNotifyPromotion(prevLevel, state.careerXp);
+    } else if (hs.actionKind === 'gacha') {
+      const cost = hs.coinCost ?? ECONOMY.gachaPullPrice;
+      if (state.coins < cost) {
+        hud.pushToast(`金币不足！惊喜扭蛋需要 ${cost} G`, 'warn');
+        return;
+      }
+      const pulled = pullGachaItem(state, atlas, clock.day);
+      if (!pulled) {
+        hud.pushToast('扭蛋机补货中，稍后再来', 'warn');
+        return;
+      }
+      state.coins -= cost;
+      state.mood = clampVital(state.mood + (hs.moodGain ?? 18));
+      advanceClockAndBills(hs.minutes);
+      if (actors[1]) {
+        actors[1].emoteText = '🎁';
+        actors[1].emoteTimer = 3.0;
+      }
+      hud.pushToast(`🎁 扭蛋开出 [${pulled.tier}]「${pulled.itemName}」！已放进装修仓库`, 'good');
+    } else if (hs.actionKind === 'pet_spa') {
+      const shiba = state.residents.find((r) => r.id === 'shiba' && r.present);
+      const actorShiba = actors.find((a) => a.spritePrefix === 'shiba');
+      const cost = hs.coinCost ?? 20;
+      if (state.coins >= cost) {
+        state.coins -= cost;
+        state.energy = clampVital(state.energy + (hs.energyGain ?? 8));
+        state.mood = clampVital(state.mood + (hs.moodGain ?? 28));
+        advanceClockAndBills(hs.minutes);
+        if (shiba) triggerResidentWave(shiba, '🫧');
+        if (actorShiba) {
+          actorShiba.emoteText = '🫧';
+          actorShiba.emoteTimer = 2.8;
+        }
+        hud.pushToast(`🐾 豆包舒爽泡泡SPA完成：-${cost} G · 精力 +8 · 心情 +28`, 'good');
+      } else {
+        state.mood = clampVital(state.mood + 14);
+        advanceClockAndBills(20);
+        if (actorShiba) {
+          actorShiba.emoteText = '🐶';
+          actorShiba.emoteTimer = 2.6;
+        }
+        hud.pushToast('🐶 免费给豆包顺毛互动：心情 +14', 'good');
+      }
+    } else {
+      const cost = hs.coinCost ?? 15;
+      if (state.coins < cost) {
+        hud.pushToast(`金币不足！需要 ${cost} G`, 'warn');
+        return;
+      }
+      state.coins -= cost;
+      state.energy = clampVital(state.energy + (hs.energyGain ?? 18));
+      state.mood = clampVital(state.mood + (hs.moodGain ?? 18));
+      advanceClockAndBills(hs.minutes);
+      if (actors[1]) {
+        actors[1].emoteText = '😋';
+        actors[1].emoteTimer = 2.6;
+      }
+      hud.pushToast(
+        `${hs.label}享用完成 (-${cost}G)：精力 +${hs.energyGain ?? 18} · 心情 +${hs.moodGain ?? 18}`,
+        'good'
+      );
+    }
+    checkAndNotifyMilestones();
+    save();
+    syncHud();
+  };
+
   const enterMapLandmark = (landmarkId: WorldMapLandmarkId): void => {
     const lm = WORLD_MAP_LANDMARKS.find((m) => m.id === landmarkId);
     if (!lm) return;
-    if (lm.targetScene === 'pet') {
-      focusMapOnLandmark(lm);
-      triggerPetCareVisit();
-      return;
+    if (!state.visitedLandmarks.includes(landmarkId)) {
+      state.visitedLandmarks.push(landmarkId);
     }
+    checkAndNotifyMilestones();
     if (lm.targetScene === 'home') {
       switchScene('home');
     } else if (lm.targetScene === 'market') {
       switchScene('market');
+    } else if (lm.targetScene === 'venue') {
+      switchScene('venue', undefined, lm.targetVenue ?? 'cafe');
     } else {
       switchScene('street', lm.targetSpot);
     }
@@ -1053,6 +1242,8 @@ async function bootstrap(): Promise<void> {
       cameraX,
       viewW: renderer.getViewDimensions().viewW,
       sceneMode,
+      activeVenueId,
+      venueLightsOn,
       activeStreetSpot,
       activeMarketWare,
       pendingHomeItem,
@@ -1110,6 +1301,30 @@ async function bootstrap(): Promise<void> {
       return;
     }
     if (e.button !== 0) return;
+
+    if (sceneMode === 'venue') {
+      const outPt = renderer.screenToOutdoor(e.clientX, e.clientY, cameraX);
+      const actors = [...venueActorsMap[activeVenueId]].sort((a, b) => b.y - a.y);
+      const hitActor = actors.find((a) => {
+        const rect = atlas.characters?.[a.staticSprite];
+        const hw = Math.max(24, (rect?.w ?? 64) * 0.45);
+        const h = Math.max(76, rect?.h ?? 130);
+        return Math.abs(outPt.x - a.x) <= hw && outPt.y <= a.y + 8 && outPt.y >= a.y - h;
+      });
+      if (hitActor) {
+        draggingVenueActor = {
+          actor: hitActor,
+          startClientX: e.clientX,
+          startClientY: e.clientY,
+          moved: false,
+          x: hitActor.x,
+          y: hitActor.y,
+          snapSeat: null,
+        };
+        canvas.classList.add('dragging');
+        return;
+      }
+    }
 
     if (sceneMode !== 'home') {
       isPanning = true;
@@ -1178,6 +1393,7 @@ async function bootstrap(): Promise<void> {
           placingMode = null;
           canvas.classList.remove('placing');
         }
+        checkAndNotifyMilestones();
         save();
         syncHud();
         return;
@@ -1258,11 +1474,40 @@ async function bootstrap(): Promise<void> {
   });
 
   window.addEventListener('pointermove', (e) => {
+    if (draggingVenueActor) {
+      const outPt = renderer.screenToOutdoor(e.clientX, e.clientY, cameraX);
+      if (Math.hypot(e.clientX - draggingVenueActor.startClientX, e.clientY - draggingVenueActor.startClientY) > 6) {
+        draggingVenueActor.moved = true;
+      }
+      const venue = VENUE_DEFS[activeVenueId];
+      draggingVenueActor.x = Math.max(40, Math.min(920, outPt.x));
+      draggingVenueActor.y = Math.max(venue.floorMinY - 20, Math.min(venue.floorMaxY, outPt.y + 24));
+      let snapSeat: { x: number; footY: number; facing: 'left' | 'right' } | null = null;
+      let bestDist = 44;
+      for (const s of venue.seats) {
+        const d = Math.hypot(outPt.x - s.x, outPt.y - (s.footY - 34));
+        if (d < bestDist) {
+          bestDist = d;
+          snapSeat = s;
+        }
+      }
+      draggingVenueActor.snapSeat = snapSeat;
+      return;
+    }
+
     if (sceneMode === 'map') {
       const mapPt = renderer.screenToWorldMap(e.clientX, e.clientY, cameraX, cameraY);
       const hitLm = hitTestMapLandmark(mapPt.x, mapPt.y);
       hoveredHotspotId = hitLm?.id ?? null;
       canvas.style.cursor = !isPanning && hitLm ? 'pointer' : '';
+    } else if (sceneMode === 'venue') {
+      const outPt = renderer.screenToOutdoor(e.clientX, e.clientY, cameraX);
+      const venue = VENUE_DEFS[activeVenueId];
+      const hitHs = venue.hotspots.find(
+        (h) => outPt.x >= h.x && outPt.x <= h.x + h.w && outPt.y >= h.y && outPt.y <= h.y + h.h
+      );
+      hoveredHotspotId = hitHs?.id ?? null;
+      canvas.style.cursor = !isPanning && hitHs ? 'pointer' : '';
     } else if (sceneMode === 'street') {
       const outPt = renderer.screenToOutdoor(e.clientX, e.clientY, cameraX);
       const hitSpot = STREET_HOTSPOTS.find(
@@ -1322,6 +1567,30 @@ async function bootstrap(): Promise<void> {
   });
 
   window.addEventListener('pointerup', (e) => {
+    if (draggingVenueActor) {
+      const dr = draggingVenueActor;
+      draggingVenueActor = null;
+      canvas.classList.remove('dragging');
+      if (!dr.moved) {
+        dr.actor.emoteText = dr.actor.spritePrefix === 'shiba' ? '🐶' : '👋';
+        dr.actor.emoteTimer = 2.2;
+      } else if (dr.snapSeat) {
+        dr.actor.x = dr.snapSeat.x;
+        dr.actor.y = dr.snapSeat.footY;
+        dr.actor.facing = dr.snapSeat.facing;
+        dr.actor.seated = true;
+        dr.actor.emoteText = '✨';
+        dr.actor.emoteTimer = 2.0;
+      } else {
+        const venue = VENUE_DEFS[activeVenueId];
+        dr.actor.seated = false;
+        dr.actor.x = dr.x;
+        dr.actor.y = Math.max(venue.floorMinY, Math.min(venue.floorMaxY, dr.y));
+        dr.actor.pauseTimer = 1.6;
+      }
+      return;
+    }
+
     if (draggingRes) {
       const dr = draggingRes;
       draggingRes = null;
@@ -1359,6 +1628,17 @@ async function bootstrap(): Promise<void> {
         const hitLm = hitTestMapLandmark(mapPt.x, mapPt.y);
         if (hitLm) {
           enterMapLandmark(hitLm.id);
+        }
+        return;
+      }
+      if (sceneMode === 'venue') {
+        const outPt = renderer.screenToOutdoor(e.clientX, e.clientY, cameraX);
+        const venue = VENUE_DEFS[activeVenueId];
+        const hitHs = venue.hotspots.find(
+          (h) => outPt.x >= h.x && outPt.x <= h.x + h.w && outPt.y >= h.y && outPt.y <= h.y + h.h
+        );
+        if (hitHs) {
+          triggerVenueHotspot(hitHs);
         }
         return;
       }
@@ -1526,8 +1806,10 @@ async function bootstrap(): Promise<void> {
       syncHud();
     }
 
-    // Advance Phase 2 resident AI or Phase 3-4 outdoor actors
-    if (sceneMode === 'street') {
+    // Advance Phase 2 resident AI or Phase 3-6 venue/outdoor actors
+    if (sceneMode === 'venue') {
+      updateOutdoorActors(venueActorsMap[activeVenueId], dt, clock.speed);
+    } else if (sceneMode === 'street') {
       updateOutdoorActors(streetActors, dt, clock.speed);
     } else if (sceneMode === 'market') {
       updateOutdoorActors(marketActors, dt, clock.speed);
@@ -1562,7 +1844,25 @@ async function bootstrap(): Promise<void> {
 
     renderer.render({
       sceneMode,
-      outdoorActors: sceneMode === 'market' ? marketActors : streetActors,
+      activeVenueId,
+      venueLightsOn,
+      draggingVenueActor:
+        draggingVenueActor && draggingVenueActor.moved
+          ? {
+              actor: draggingVenueActor.actor,
+              x: draggingVenueActor.x,
+              y: draggingVenueActor.y,
+              snapSeat: draggingVenueActor.snapSeat
+                ? { x: draggingVenueActor.snapSeat.x, y: draggingVenueActor.snapSeat.footY }
+                : null,
+            }
+          : null,
+      outdoorActors:
+        sceneMode === 'venue'
+          ? venueActorsMap[activeVenueId]
+          : sceneMode === 'market'
+            ? marketActors
+            : streetActors,
       hoveredHotspotId,
       floor: state.floors[state.activeFloor],
       placedOnFloor: getFloorItems(),

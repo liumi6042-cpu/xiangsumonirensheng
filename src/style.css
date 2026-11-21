@@ -72,14 +72,14 @@ button:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 
 .scroll-arrow.left { left: 12px; }
 .scroll-arrow.right { right: 12px; }
 .bottom-info-bar { position: absolute; bottom: 14px; left: 14px; }
-.comfort-card { flex-direction: column; align-items: flex-start; gap: 3px; padding: 6px 11px; border-radius: 15px; background: #fff9eef5; font-size: 11px; font-weight: 750; }
-.comfort-row, .selection-title, .item-meta span, .role-line, .blueprint-note, .vitals-row { display: flex; align-items: center; gap: 5px; }
+.comfort-card { flex-direction: column; align-items: flex-start; gap: 3px; padding: 6px 10px; border-radius: 15px; background: #fff9eef5; font-size: 11px; font-weight: 750; max-width: 215px; }
+.comfort-row, .selection-title, .item-meta span, .role-line, .blueprint-note, .vitals-row { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 .comfort-row + .comfort-row { color: var(--muted); }
 .vitals-row { gap: 8px; }
 .vital-low { color: #b63d28; font-weight: 850; }
 .career-chip { padding: 1px 6px; border-radius: 999px; background: var(--almond); border: 1px solid #cbb18c; font-size: 10px; color: var(--muted); }
 .resident-action-bar, .selection-bar, .placement-banner { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); top: auto; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 6px; width: max-content; max-width: calc(100% - 28px); border-radius: 24px; z-index: 5; }
-.resident-action-bar { max-width: min(820px, calc(100% - 420px)); flex-wrap: wrap; }
+.resident-action-bar { max-width: min(740px, calc(100% - 460px)); flex-wrap: wrap; }
 .selection-title { margin-inline: 4px; font-size: 12px; font-weight: 800; white-space: nowrap; }
 .resident-action-bar .pixel-btn, .selection-bar .pixel-btn { min-height: 29px; padding: 3px 7px; font-size: 11px; }
 .outfit-picker { max-width: 115px; height: 29px; padding-inline: 6px; border: 1.5px solid var(--ink); border-radius: 999px; background: var(--almond); font-size: 11px; cursor: pointer; }

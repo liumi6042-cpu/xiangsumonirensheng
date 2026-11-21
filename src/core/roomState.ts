@@ -73,6 +73,10 @@ export interface GameSaveState {
   careerXp: number;
   nightMarketDay: number;
   nightMarketSalesToday: number;
+  lastRentCollectedDay: number;
+  visitedLandmarks: string[];
+  gachaPullCount: number;
+  claimedMilestones: string[];
   nextUid: number;
 }
 
@@ -177,7 +181,7 @@ export function createInitialSaveState(): GameSaveState {
     version: 5,
     coins: ECONOMY.starterCoins,
     day: 1,
-    minuteOfDay: 17 * 60 + 45,
+    minuteOfDay: 10 * 60 + 15,
     lastSundayBillDay: 0,
     activeFloor: 1,
     floors: {
@@ -238,6 +242,10 @@ export function createInitialSaveState(): GameSaveState {
     careerXp: 0,
     nightMarketDay: 1,
     nightMarketSalesToday: 0,
+    lastRentCollectedDay: 1,
+    visitedLandmarks: [],
+    gachaPullCount: 0,
+    claimedMilestones: [],
     nextUid: uidCounter,
   };
 }
@@ -258,6 +266,10 @@ export function loadSaveState(): GameSaveState {
     if (typeof parsed.careerXp !== 'number') parsed.careerXp = 0;
     if (typeof parsed.nightMarketDay !== 'number') parsed.nightMarketDay = parsed.day;
     if (typeof parsed.nightMarketSalesToday !== 'number') parsed.nightMarketSalesToday = 0;
+    if (typeof parsed.lastRentCollectedDay !== 'number') parsed.lastRentCollectedDay = parsed.day;
+    if (!Array.isArray(parsed.visitedLandmarks)) parsed.visitedLandmarks = [];
+    if (typeof parsed.gachaPullCount !== 'number') parsed.gachaPullCount = 0;
+    if (!Array.isArray(parsed.claimedMilestones)) parsed.claimedMilestones = [];
     return parsed;
   } catch {
     return createInitialSaveState();

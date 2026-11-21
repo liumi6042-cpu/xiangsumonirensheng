@@ -27,10 +27,12 @@ import {
 import { GRID_SIZE, VIRTUAL_HEIGHT } from '../data/economy';
 import {
   STREET_HOTSPOTS,
+  VENUE_DEFS,
   WORLD_MAP_LANDMARKS,
   WORLD_MAP_SIZE,
   type OutdoorActor,
   type SceneMode,
+  type VenueId,
 } from '../core/townLife';
 
 export interface DraggingResidentRender {
@@ -43,6 +45,14 @@ export interface DraggingResidentRender {
 
 export interface RenderOptions {
   sceneMode: SceneMode;
+  activeVenueId?: VenueId;
+  venueLightsOn?: boolean;
+  draggingVenueActor?: {
+    actor: OutdoorActor;
+    x: number;
+    y: number;
+    snapSeat: { x: number; y: number } | null;
+  } | null;
   floor: FloorData;
   placedOnFloor: PlacedItem[];
   residentsOnFloor: ResidentState[];
@@ -172,6 +182,10 @@ export class PixelRenderer {
     this.resizeToDisplay();
     if (opts.sceneMode === 'map') {
       this.renderWorldMapScene(opts);
+      return;
+    }
+    if (opts.sceneMode === 'venue') {
+      this.renderVenueScene(opts);
       return;
     }
 
@@ -342,8 +356,13 @@ export class PixelRenderer {
     for (const a of sorted) {
       let spriteKey = a.staticSprite;
       let bobY = 0;
-      const walking = a.speed > 0 && a.pauseTimer <= 0;
-      if (walking) {
+      const walking = a.speed > 0 && a.pauseTimer <= 0 && !a.seated;
+      if (a.seated) {
+        const sitKey = `${a.spritePrefix}_sit`;
+        if (this.atlas.characters?.[sitKey]) {
+          spriteKey = sitKey;
+        }
+      } else if (walking) {
         if (a.hasWalkFrames) {
           spriteKey = Math.floor(a.walkPhase) % 2 === 0 ? `${a.spritePrefix}_walk_1` : `${a.spritePrefix}_walk_2`;
           bobY = -Math.abs(Math.sin(a.walkPhase * Math.PI)) * 1.6;
@@ -387,6 +406,151 @@ export class PixelRenderer {
         ctx.restore();
       }
     }
+  }
+
+  private renderVenueScene(opts: RenderOptions): void {
+    const venue = VENUE_DEFS[opts.activeVenueId ?? 'cafe'];
+    const tCtx = this.targetCanvas.getContext('2d')!;
+    tCtx.imageSmoothingEnabled = true;
+    tCtx.imageSmoothingQuality = 'high';
+
+    const offsetX = this.getOutdoorOffsetX();
+    const camX = offsetX > 0 ? 0 : Math.max(0, Math.min(960 - this.viewW, Math.round(opts.cameraX)));
+    const sx = this.targetCanvas.width / Math.max(1, this.viewW);
+    const sy = this.targetCanvas.height / VIRTUAL_HEIGHT;
+
+    tCtx.save();
+    tCtx.fillStyle = '#2B1810';
+    tCtx.fillRect(0, 0, this.targetCanvas.width, this.targetCanvas.height);
+    tCtx.scale(sx, sy);
+    tCtx.translate(offsetX - camX, 0);
+
+    const bgImg = this.surfaceImages.get(venue.backdropUrl);
+    if (bgImg && bgImg.complete && bgImg.naturalWidth > 0) {
+      if (offsetX > 0) {
+        tCtx.drawImage(bgImg, 0, 0, 8, bgImg.naturalHeight, -offsetX, 0, offsetX + 2, VIRTUAL_HEIGHT);
+        tCtx.drawImage(
+          bgImg,
+          bgImg.naturalWidth - 8,
+          0,
+          8,
+          bgImg.naturalHeight,
+          958,
+          0,
+          offsetX + 2,
+          VIRTUAL_HEIGHT
+        );
+      }
+      // Aspect-clean draw into 960x540 dollhouse stage
+      const targetAspect = 960 / VIRTUAL_HEIGHT;
+      const srcAspect = bgImg.naturalWidth / Math.max(1, bgImg.naturalHeight);
+      if (Math.abs(srcAspect - targetAspect) > 0.04) {
+        const srcH = Math.round(bgImg.naturalWidth / targetAspect);
+        const srcY = Math.max(0, Math.round((bgImg.naturalHeight - srcH) * 0.56));
+        tCtx.drawImage(bgImg, 0, srcY, bgImg.naturalWidth, srcH, 0, 0, 960, VIRTUAL_HEIGHT);
+      } else {
+        tCtx.drawImage(bgImg, 0, 0, 960, VIRTUAL_HEIGHT);
+      }
+    }
+
+    // Highlight hovered venue station cleanly
+    for (const hs of venue.hotspots) {
+      if (opts.hoveredHotspotId !== hs.id) continue;
+      tCtx.save();
+      tCtx.fillStyle = 'rgba(255, 224, 130, 0.16)';
+      tCtx.strokeStyle = '#FFD54F';
+      tCtx.lineWidth = 3;
+      tCtx.beginPath();
+      tCtx.roundRect(hs.x, hs.y, hs.w, hs.h, 16);
+      tCtx.fill();
+      tCtx.stroke();
+
+      const labelW = Math.max(150, hs.label.length * 14 + 34);
+      const lx = Math.max(8, Math.min(960 - labelW - 8, hs.x + hs.w / 2 - labelW / 2));
+      const ly = Math.max(58, hs.y - 26);
+      tCtx.fillStyle = '#FFF9EE';
+      tCtx.strokeStyle = '#2B1810';
+      tCtx.lineWidth = 2;
+      tCtx.beginPath();
+      tCtx.roundRect(lx, ly, labelW, 24, 999);
+      tCtx.fill();
+      tCtx.stroke();
+
+      tCtx.font = '800 11px "Nunito", "PingFang SC", "Microsoft YaHei", sans-serif';
+      tCtx.textAlign = 'center';
+      tCtx.textBaseline = 'middle';
+      tCtx.fillStyle = '#2B1810';
+      tCtx.fillText(hs.label, lx + labelW / 2, ly + 12.5);
+      tCtx.restore();
+    }
+
+    // Drag seat indicators if player drags a resident inside the boutique
+    const drag = opts.draggingVenueActor;
+    if (drag) {
+      tCtx.save();
+      for (const s of venue.seats) {
+        const active = drag.snapSeat && Math.hypot(drag.snapSeat.x - s.x, drag.snapSeat.y - s.footY) < 4;
+        tCtx.fillStyle = active ? 'rgba(130, 214, 138, 0.42)' : 'rgba(255, 232, 160, 0.25)';
+        tCtx.strokeStyle = active ? '#499F4F' : '#FFD54F';
+        tCtx.lineWidth = 2.2;
+        tCtx.beginPath();
+        tCtx.ellipse(s.x, s.footY - 6, 22, 10, 0, 0, Math.PI * 2);
+        tCtx.fill();
+        tCtx.stroke();
+      }
+      tCtx.restore();
+    }
+
+    // Draw live shop residents/staff (excluding the currently dragged actor)
+    const activeActors = drag ? opts.outdoorActors.filter((a) => a !== drag.actor) : opts.outdoorActors;
+    this.drawOutdoorActors(tCtx, activeActors, opts.elapsedSec);
+
+    if (drag) {
+      const rect = this.atlas.characters?.[drag.actor.staticSprite];
+      if (rect) {
+        const dx = Math.round(drag.x - rect.w / 2);
+        const dy = Math.round(drag.y - rect.h - 10);
+        tCtx.save();
+        tCtx.fillStyle = 'rgba(0,0,0,0.22)';
+        tCtx.beginPath();
+        tCtx.ellipse(drag.x, drag.y, 18, 6, 0, 0, Math.PI * 2);
+        tCtx.fill();
+        if (drag.actor.facing === 'left') {
+          tCtx.translate(dx + rect.w, dy);
+          tCtx.scale(-1, 1);
+          tCtx.drawImage(this.atlasImg, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
+        } else {
+          tCtx.drawImage(this.atlasImg, rect.x, rect.y, rect.w, rect.h, dx, dy, rect.w, rect.h);
+        }
+        tCtx.restore();
+      }
+    }
+
+    // Cozy warm evening ambiance + warm glowing boutique pendants
+    const hour = opts.clock.hour + opts.clock.minute / 60;
+    const isDark = hour >= 18.2 || hour < 6.0;
+    if (isDark) {
+      const lightsOn = opts.venueLightsOn ?? true;
+      tCtx.fillStyle = lightsOn ? 'rgba(30, 32, 68, 0.26)' : 'rgba(18, 22, 48, 0.52)';
+      tCtx.fillRect(0, 0, 960, VIRTUAL_HEIGHT);
+      if (lightsOn) {
+        tCtx.save();
+        tCtx.globalCompositeOperation = 'lighter';
+        for (const g of venue.lampGlows) {
+          const grad = tCtx.createRadialGradient(g.x, g.y, 10, g.x, g.y, g.r);
+          grad.addColorStop(0, 'rgba(255, 222, 138, 0.45)');
+          grad.addColorStop(0.6, 'rgba(255, 190, 98, 0.16)');
+          grad.addColorStop(1, 'rgba(255, 190, 98, 0)');
+          tCtx.fillStyle = grad;
+          tCtx.beginPath();
+          tCtx.arc(g.x, g.y, g.r, 0, Math.PI * 2);
+          tCtx.fill();
+        }
+        tCtx.restore();
+      }
+    }
+
+    tCtx.restore();
   }
 
   private renderWorldMapScene(opts: RenderOptions): void {
